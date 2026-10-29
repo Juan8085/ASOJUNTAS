@@ -308,3 +308,4 @@ export default function CertificatesScreen() {
     </View>
   );
 }
+
