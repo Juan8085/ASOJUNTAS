@@ -8,3 +8,4 @@ import { AffiliatesController } from "./affiliates.controller";
   exports: [AffiliatesService],
 })
 export class AffiliatesModule {}
+

@@ -94,3 +94,4 @@ export class CertificatesController {
     return this.certificatesService.revokeCertificate(id, jacId);
   }
 }
+

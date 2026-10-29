@@ -193,3 +193,4 @@ export class TreasuryController {
     return this.treasuryService.getFinancialSummary(jacId);
   }
 }
+

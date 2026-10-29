@@ -8,3 +8,4 @@ import { TreasuryController } from "./treasury.controller";
   exports: [TreasuryService],
 })
 export class TreasuryModule {}
+

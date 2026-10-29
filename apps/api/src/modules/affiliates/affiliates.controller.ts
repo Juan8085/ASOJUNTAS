@@ -156,3 +156,4 @@ export class AffiliatesController {
     return this.affiliatesService.updateStatus(jacId, id, body);
   }
 }
+

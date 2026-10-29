@@ -8,6 +8,12 @@ import { AffiliatesModule } from "./modules/affiliates/affiliates.module";
 import { CertificatesModule } from "./modules/certificates/certificates.module";
 import { PaymentsModule } from "./modules/payments/payments.module";
 import { TreasuryModule } from "./modules/treasury/treasury.module";
+import { AssembliesModule } from "./modules/assemblies/assemblies.module";
+import { MingasModule } from "./modules/mingas/mingas.module";
+import { MarketplaceModule } from "./modules/marketplace/marketplace.module";
+import { PqrsdModule } from "./modules/pqrsd/pqrsd.module";
+import { PostsModule } from "./modules/posts/posts.module";
+import { NotificationsModule } from "./modules/notifications/notifications.module";
 import { JwtAuthGuard } from "./core/guards/jwt-auth.guard";
 
 @Module({
@@ -22,6 +28,12 @@ import { JwtAuthGuard } from "./core/guards/jwt-auth.guard";
     CertificatesModule,
     PaymentsModule,
     TreasuryModule,
+    AssembliesModule,
+    MingasModule,
+    MarketplaceModule,
+    PqrsdModule,
+    PostsModule,
+    NotificationsModule,
   ],
   controllers: [],
   providers: [

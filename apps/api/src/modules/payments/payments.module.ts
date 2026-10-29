@@ -9,3 +9,4 @@ import { WompiGatewayAdapter } from "./infrastructure/wompi.adapter";
   exports: [PaymentsService, WompiGatewayAdapter],
 })
 export class PaymentsModule {}
+

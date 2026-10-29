@@ -89,3 +89,4 @@ export class PaymentsController {
     return this.paymentsService.recordManualCashPayment(user.sub, body);
   }
 }
+
