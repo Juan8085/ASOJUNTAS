@@ -10,3 +10,4 @@ import { ExpoPushAdapter } from "./infrastructure/expo-push.adapter";
   exports: [NotificationsService, WhatsAppCloudAdapter, ExpoPushAdapter],
 })
 export class NotificationsModule {}
+

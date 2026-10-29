@@ -8,3 +8,4 @@ import { PostsController } from "./posts.controller";
   exports: [PostsService],
 })
 export class PostsModule {}
+

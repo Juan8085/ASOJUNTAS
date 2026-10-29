@@ -8,3 +8,4 @@ import { AssembliesController } from "./assemblies.controller";
   exports: [AssembliesService],
 })
 export class AssembliesModule {}
+

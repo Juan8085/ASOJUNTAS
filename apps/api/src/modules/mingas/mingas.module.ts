@@ -8,3 +8,4 @@ import { MingasController } from "./mingas.controller";
   exports: [MingasService],
 })
 export class MingasModule {}
+

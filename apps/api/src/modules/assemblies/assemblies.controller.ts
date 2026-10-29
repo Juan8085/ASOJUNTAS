@@ -170,3 +170,4 @@ export class AssembliesController {
     return this.assembliesService.updateStatus(id, jacId, body);
   }
 }
+
