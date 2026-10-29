@@ -1,0 +1,24 @@
+{
+  "name": "@conectajac/database",
+  "version": "0.1.0",
+  "private": true,
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "scripts": {
+    "db:generate": "prisma generate",
+    "db:migrate": "prisma migrate dev",
+    "db:push": "prisma db push",
+    "db:studio": "prisma studio",
+    "lint": "eslint src/",
+    "check-types": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.4.1"
+  },
+  "devDependencies": {
+    "@conectajac/eslint-config": "workspace:*",
+    "@conectajac/typescript-config": "workspace:*",
+    "prisma": "^6.4.1",
+    "typescript": "^5.8.2"
+  }
+}

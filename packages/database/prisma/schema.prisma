@@ -1,0 +1,877 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// =========================================================================
+// ENUMS
+// =========================================================================
+
+enum UserRole {
+  SUPER_ADMIN        // Asojuntas / Administrador Municipal
+  JAC_ADMIN          // Administrador General de JAC
+  JAC_PRESIDENT      // Presidente de la Junta
+  JAC_VICE_PRESIDENT // Vicepresidente
+  JAC_SECRETARY      // Secretario(a) (Custodio del Libro de Afiliados)
+  JAC_TREASURER      // Tesorero(a) (Gestor de Cuentas y Pagos)
+  JAC_FISCAL         // Fiscal (Auditor interno)
+  CITIZEN            // Habitante / Afiliado de Vereda o Barrio
+}
+
+enum IdentificationType {
+  CC       // Cédula de Ciudadanía
+  TI       // Tarjeta de Identidad
+  CE       // Cédula de Extranjería
+  PASSPORT // Pasaporte
+  PPT      // Permiso por Protección Temporal
+}
+
+enum MembershipStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+  DECEASED
+}
+
+enum CertificateType {
+  RESIDENCE     // Certificado de Residencia
+  AFFILIATION   // Certificado de Afiliación
+  GOOD_STANDING // Paz y Salvo Comunal
+}
+
+enum CertificateStatus {
+  VALID
+  REVOKED
+  EXPIRED
+}
+
+enum FeeType {
+  ORDINARY           // Cuota ordinaria de sostenimiento
+  EXTRAORDINARY      // Cuota extraordinaria (obras comunales)
+  COMMUNAL_WORK_FINE // Compensación monetaria por inasistencia a Minga
+  EVENT              // Aporte para bazar/evento comunal
+}
+
+enum FeePeriodicity {
+  ONE_TIME
+  MONTHLY
+  BIMONTHLY
+  QUARTERLY
+  BIANNUAL
+  ANNUAL
+}
+
+enum ObligationStatus {
+  PENDING
+  PARTIALLY_PAID
+  PAID
+  OVERDUE
+  WAIVED
+}
+
+enum PaymentGateway {
+  WOMPI
+  MERCADOPAGO
+  EPAYCO
+  MANUAL_CASH
+}
+
+enum PaymentMethod {
+  PSE
+  NEQUI
+  DAVIPLATA
+  CREDIT_CARD
+  DEBIT_CARD
+  CASH
+  BANK_TRANSFER
+}
+
+enum PaymentStatus {
+  PENDING
+  PROCESSING
+  APPROVED
+  REJECTED
+  CANCELLED
+  REFUNDED
+}
+
+enum TreasuryAccountType {
+  CASH_BOX       // Caja menor en efectivo
+  BANK_SAVINGS   // Cuenta de Ahorros Bancaria
+  BANK_CHECKING  // Cuenta Corriente
+  DIGITAL_WALLET // Billetera Digital (Nequi / Daviplata institucional)
+}
+
+enum TreasuryTransactionType {
+  INCOME
+  EXPENSE
+}
+
+enum TreasuryCategory {
+  AFFILIATION_FEE
+  MONTHLY_FEE
+  EXTRAORDINARY_FEE
+  COMMUNAL_HALL_RENT
+  DONATION
+  MUNICIPAL_SUBSIDY
+  EVENT_PROCEEDS
+  COMMUNAL_WORKS
+  OFFICE_SUPPLIES
+  MAINTENANCE
+  LEGAL_SERVICES
+  OTHER
+}
+
+enum MarketUnit {
+  KG
+  LIBRA
+  BULTO
+  ARROBA
+  UNIDAD
+  MANOJO
+  LITRO
+  BOTELLA
+}
+
+enum MarketOrderStatus {
+  PENDING_CONFIRMATION
+  CONFIRMED
+  PREPARING
+  READY_FOR_PICKUP
+  IN_TRANSIT
+  DELIVERED
+  CANCELLED
+}
+
+enum DeliveryMethod {
+  PICKUP_AT_FARM
+  LOCAL_DELIVERY
+  COMMUNITY_HUB_PICKUP
+  WHATSAPP_COORDINATION
+}
+
+enum PostScope {
+  MUNICIPAL_ASOJUNTAS // Visible para todo el municipio
+  JAC_LOCAL           // Exclusivo de la vereda/barrio de la JAC
+}
+
+enum PostType {
+  NEWS
+  OFFICIAL_CIRCULAR
+  COMMUNAL_WORK      // Convocatoria a Minga comunitaria
+  EMERGENCY_ALERT    // Alerta de derrumbe, vía cerrada, clima
+  EVENT
+}
+
+enum PostPriority {
+  LOW
+  NORMAL
+  HIGH
+  URGENT
+}
+
+enum PqrsdType {
+  PETITION
+  COMPLAINT
+  CLAIM
+  SUGGESTION
+  REPORT
+}
+
+enum PqrsdStatus {
+  RECEIVED
+  UNDER_REVIEW
+  IN_PROGRESS
+  RESOLVED
+  REJECTED
+  CLOSED
+}
+
+enum AssemblyType {
+  ORDINARY
+  EXTRAORDINARY
+}
+
+enum AssemblyStatus {
+  SCHEDULED
+  IN_PROGRESS
+  QUORUM_FAILED
+  FINISHED
+  CANCELLED
+}
+
+enum NotificationChannel {
+  PUSH
+  WHATSAPP
+  SMS
+  EMAIL
+  IN_APP
+}
+
+// =========================================================================
+// 1. ORGANIZACIÓN Y MULTI-TENANCY (NIVEL 1 & 2)
+// =========================================================================
+
+model Municipality {
+  id         String      @id @default(uuid()) @db.Uuid
+  name       String      @db.VarChar(120)
+  department String      @db.VarChar(100)
+  daneCode   String      @unique @db.VarChar(10)
+  createdAt  DateTime    @default(now()) @map("created_at")
+  asojuntas  Asojuntas[]
+  jacs       Jac[]
+
+  @@map("municipalities")
+}
+
+model Asojuntas {
+  id                    String       @id @default(uuid()) @db.Uuid
+  municipalityId        String       @db.Uuid @map("municipality_id")
+  name                  String       @db.VarChar(150)
+  nit                   String       @unique @db.VarChar(20)
+  legalPersonhoodNumber String       @map("legal_personhood_number") @db.VarChar(50)
+  email                 String?      @db.VarChar(150)
+  phone                 String?      @db.VarChar(20)
+  address               String?      @db.VarChar(255)
+  isActive              Boolean      @default(true) @map("is_active")
+  createdAt             DateTime     @default(now()) @map("created_at")
+  updatedAt             DateTime     @updatedAt @map("updated_at")
+
+  municipality          Municipality @relation(fields: [municipalityId], references: [id], onDelete: Restrict)
+  jacs                  Jac[]
+
+  @@map("asojuntas")
+}
+
+model Jac {
+  id                    String         @id @default(uuid()) @db.Uuid
+  municipalityId        String         @db.Uuid @map("municipality_id")
+  asojuntasId           String?        @db.Uuid @map("asojuntas_id")
+  name                  String         @db.VarChar(150)
+  legalPersonhoodNumber String         @map("legal_personhood_number") @db.VarChar(50)
+  nit                   String?        @unique @db.VarChar(20)
+  codeRup               String?        @unique @map("code_rup") @db.VarChar(50) // Registro Único Comunal
+  veredaOrBarrio        String         @map("vereda_or_barrio") @db.VarChar(100)
+  address               String?        @db.VarChar(255)
+  latitude              Decimal?       @db.Decimal(10, 8)
+  longitude             Decimal?       @db.Decimal(11, 8)
+  phone                 String?        @db.VarChar(20)
+  email                 String?        @db.VarChar(150)
+  logoUrl               String?        @map("logo_url") @db.VarChar(500)
+  officialSealUrl       String?        @map("official_seal_url") @db.VarChar(500)
+  primaryColor          String         @default("#059669") @map("primary_color") @db.VarChar(7)
+  bankAccounts          Json           @default("[]") @map("bank_accounts")
+  isActive              Boolean        @default(true) @map("is_active")
+  createdAt             DateTime       @default(now()) @map("created_at")
+  updatedAt             DateTime       @updatedAt @map("updated_at")
+
+  municipality          Municipality   @relation(fields: [municipalityId], references: [id], onDelete: Restrict)
+  asojuntas             Asojuntas?     @relation(fields: [asojuntasId], references: [id], onDelete: SetNull)
+
+  memberships           JacMembership[]
+  certificates          Certificate[]
+  feeConfigurations     FeeConfiguration[]
+  userFeeObligations    UserFeeObligation[]
+  paymentTransactions   PaymentTransaction[]
+  treasuryAccounts      TreasuryAccount[]
+  treasuryTransactions  TreasuryTransaction[]
+  producers             ProducerProfile[]
+  marketProducts        MarketProduct[]
+  marketOrders          MarketOrder[]
+  posts                 Post[]
+  mingaAttendances      MingaAttendance[]
+  pqrsdTickets          PqrsdTicket[]
+  assemblies            Assembly[]
+  assemblyTopics        AssemblyTopic[]
+  assemblyVoteRecords   AssemblyVoteRecord[]
+  auditLogs             AuditLog[]
+  notifications         Notification[]
+
+  @@index([municipalityId])
+  @@index([asojuntasId])
+  @@map("jacs")
+}
+
+// =========================================================================
+// 2. USUARIOS, IDENTIDAD Y LIBRO DE AFILIADOS (RBAC)
+// =========================================================================
+
+model User {
+  id                   String             @id @default(uuid()) @db.Uuid
+  identificationType   IdentificationType @default(CC) @map("identification_type")
+  identificationNumber String             @unique @map("identification_number") @db.VarChar(20)
+  firstName            String             @map("first_name") @db.VarChar(100)
+  lastName             String             @map("last_name") @db.VarChar(100)
+  email                String?            @unique @db.VarChar(150)
+  phone                String             @db.VarChar(20)
+  birthDate            DateTime?          @map("birth_date") @db.Date
+  gender               String?            @db.VarChar(10)
+  avatarUrl            String?            @map("avatar_url") @db.VarChar(500)
+  passwordHash         String             @map("password_hash") @db.VarChar(255)
+  isEmailVerified      Boolean            @default(false) @map("is_email_verified")
+  isPhoneVerified      Boolean            @default(false) @map("is_phone_verified")
+  isActive             Boolean            @default(true) @map("is_active")
+  createdAt            DateTime           @default(now()) @map("created_at")
+  updatedAt            DateTime           @updatedAt @map("updated_at")
+
+  memberships          JacMembership[]
+  issuedCertificates   Certificate[]      @relation("IssuedCertificates")
+  receivedCertificates Certificate[]      @relation("ReceivedCertificates")
+  feeObligations       UserFeeObligation[]
+  paymentTransactions  PaymentTransaction[]
+  registeredMovements  TreasuryTransaction[]
+  producerProfile      ProducerProfile?
+  marketOrders         MarketOrder[]
+  authoredPosts        Post[]
+  mingaAttendances     MingaAttendance[]
+  pqrsdTickets         PqrsdTicket[]      @relation("CitizenTickets")
+  assignedTickets      PqrsdTicket[]      @relation("AssignedTickets")
+  assemblyVoteRecords  AssemblyVoteRecord[]
+  auditLogs            AuditLog[]
+  notifications        Notification[]
+
+  @@index([phone])
+  @@index([identificationNumber])
+  @@map("users")
+}
+
+model JacMembership {
+  id                   String           @id @default(uuid()) @db.Uuid
+  jacId                String           @db.Uuid @map("jac_id")
+  userId               String           @db.Uuid @map("user_id")
+  role                 UserRole         @default(CITIZEN)
+  status               MembershipStatus @default(ACTIVE)
+  
+  // Datos formales del Libro Digital de Afiliados (Ley 2166 de 2021)
+  bookNumber           Int              @default(1) @map("book_number")
+  folioNumber          Int              @map("folio_number")
+  affiliationDate      DateTime         @default(now()) @map("affiliation_date")
+  disaffiliationDate   DateTime?        @map("disaffiliation_date")
+  disaffiliationReason String?          @map("disaffiliation_reason") @db.VarChar(255)
+  
+  // Datos socioeconómicos veredales
+  address              String           @db.VarChar(255)
+  veredaOrBarrio       String           @map("vereda_or_barrio") @db.VarChar(100)
+  occupation           String?          @db.VarChar(100)
+  hasLandOrFarm        Boolean          @default(false) @map("has_land_or_farm")
+  farmName             String?          @map("farm_name") @db.VarChar(120)
+  observations         String?          @db.VarChar(500)
+  
+  createdAt            DateTime         @default(now()) @map("created_at")
+  updatedAt            DateTime         @updatedAt @map("updated_at")
+
+  jac                  Jac              @relation(fields: [jacId], references: [id], onDelete: Cascade)
+  user                 User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([jacId, userId])
+  @@unique([jacId, bookNumber, folioNumber])
+  @@index([jacId])
+  @@index([userId])
+  @@index([role])
+  @@map("jac_memberships")
+}
+
+// =========================================================================
+// 3. CERTIFICADOS DIGITALES CON QR VERIFICABLE
+// =========================================================================
+
+model Certificate {
+  id               String            @id @default(uuid()) @db.Uuid
+  jacId            String            @db.Uuid @map("jac_id")
+  userId           String            @db.Uuid @map("user_id")
+  issuedByUserId   String            @db.Uuid @map("issued_by_user_id")
+  type             CertificateType
+  status           CertificateStatus @default(VALID)
+  
+  verificationCode String            @unique @map("verification_code") @db.VarChar(36)
+  qrSecurityToken  String            @unique @map("qr_security_token") @db.VarChar(128)
+  pdfUrl           String?           @map("pdf_url") @db.VarChar(500)
+  purpose          String            @db.VarChar(300)
+  
+  issuedAt         DateTime          @default(now()) @map("issued_at")
+  validUntil       DateTime          @map("valid_until")
+  metadata         Json              @default("{}") // Datos congelados al momento de expedir
+  
+  createdAt        DateTime          @default(now()) @map("created_at")
+  updatedAt        DateTime          @updatedAt @map("updated_at")
+
+  jac              Jac               @relation(fields: [jacId], references: [id], onDelete: Cascade)
+  user             User              @relation("ReceivedCertificates", fields: [userId], references: [id], onDelete: Restrict)
+  issuedBy         User              @relation("IssuedCertificates", fields: [issuedByUserId], references: [id], onDelete: Restrict)
+
+  @@index([jacId])
+  @@index([userId])
+  @@index([verificationCode])
+  @@map("certificates")
+}
+
+// =========================================================================
+// 4. TESORERÍA, CUOTAS Y PAGOS (ADAPTER / STRATEGY)
+// =========================================================================
+
+model FeeConfiguration {
+  id          String              @id @default(uuid()) @db.Uuid
+  jacId       String              @db.Uuid @map("jac_id")
+  name        String              @db.VarChar(120)
+  description String?             @db.VarChar(500)
+  type        FeeType
+  periodicity FeePeriodicity
+  amount      Decimal             @db.Decimal(12, 2)
+  dueDateDay  Int                 @default(15) @map("due_date_day")
+  isActive    Boolean             @default(true) @map("is_active")
+  createdAt   DateTime            @default(now()) @map("created_at")
+  updatedAt   DateTime            @updatedAt @map("updated_at")
+
+  jac         Jac                 @relation(fields: [jacId], references: [id], onDelete: Cascade)
+  obligations UserFeeObligation[]
+
+  @@index([jacId])
+  @@map("fee_configurations")
+}
+
+model UserFeeObligation {
+  id                  String               @id @default(uuid()) @db.Uuid
+  jacId               String               @db.Uuid @map("jac_id")
+  userId              String               @db.Uuid @map("user_id")
+  feeConfigId         String               @db.Uuid @map("fee_config_id")
+  period              String               @db.VarChar(20) // Ej: "2026-03", "2026-ANUAL"
+  amount              Decimal              @db.Decimal(12, 2)
+  paidAmount          Decimal              @default(0.00) @map("paid_amount") @db.Decimal(12, 2)
+  status              ObligationStatus     @default(PENDING)
+  dueDate             DateTime             @map("due_date")
+  createdAt           DateTime             @default(now()) @map("created_at")
+  updatedAt           DateTime             @updatedAt @map("updated_at")
+
+  jac                 Jac                  @relation(fields: [jacId], references: [id], onDelete: Cascade)
+  user                User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  feeConfig           FeeConfiguration     @relation(fields: [feeConfigId], references: [id], onDelete: Restrict)
+  paymentTransactions PaymentTransaction[]
+
+  @@unique([jacId, userId, feeConfigId, period])
+  @@index([jacId])
+  @@index([userId])
+  @@index([status])
+  @@map("user_fee_obligations")
+}
+
+model PaymentTransaction {
+  id                   String               @id @default(uuid()) @db.Uuid
+  idempotencyKey       String               @unique @map("idempotency_key") @db.VarChar(64)
+  jacId                String               @db.Uuid @map("jac_id")
+  userId               String               @db.Uuid @map("user_id")
+  feeObligationId      String?              @db.Uuid @map("fee_obligation_id")
+  marketOrderId        String?              @db.Uuid @map("market_order_id")
+  
+  amount               Decimal              @db.Decimal(12, 2)
+  currency             String               @default("COP") @db.VarChar(3)
+  gateway              PaymentGateway
+  paymentMethod        PaymentMethod        @map("payment_method")
+  status               PaymentStatus        @default(PENDING)
+  
+  gatewayTransactionId String?              @map("gateway_transaction_id") @db.VarChar(100)
+  gatewayReference     String?              @map("gateway_reference") @db.VarChar(100)
+  gatewaySignature     String?              @map("gateway_signature") @db.VarChar(255)
+  webhookPayload       Json?                @map("webhook_payload")
+  receiptNumber        String?              @map("receipt_number") @db.VarChar(50)
+  voucherUrl           String?              @map("voucher_url") @db.VarChar(500)
+  paidAt               DateTime?            @map("paid_at")
+  metadata             Json                 @default("{}")
+  
+  createdAt            DateTime             @default(now()) @map("created_at")
+  updatedAt            DateTime             @updatedAt @map("updated_at")
+
+  jac                  Jac                  @relation(fields: [jacId], references: [id], onDelete: Cascade)
+  user                 User                 @relation(fields: [userId], references: [id], onDelete: Restrict)
+  feeObligation        UserFeeObligation?   @relation(fields: [feeObligationId], references: [id], onDelete: SetNull)
+  marketOrder          MarketOrder?         @relation(fields: [marketOrderId], references: [id], onDelete: SetNull)
+  treasuryTransactions TreasuryTransaction[]
+
+  @@index([jacId])
+  @@index([userId])
+  @@index([gatewayTransactionId])
+  @@index([status])
+  @@map("payment_transactions")
+}
+
+model TreasuryAccount {
+  id            String                @id @default(uuid()) @db.Uuid
+  jacId         String                @db.Uuid @map("jac_id")
+  name          String                @db.VarChar(100)
+  type          TreasuryAccountType
+  balance       Decimal               @default(0.00) @db.Decimal(14, 2)
+  accountNumber String?               @map("account_number") @db.VarChar(50)
+  isActive      Boolean               @default(true) @map("is_active")
+  createdAt     DateTime              @default(now()) @map("created_at")
+  updatedAt     DateTime              @updatedAt @map("updated_at")
+
+  jac           Jac                   @relation(fields: [jacId], references: [id], onDelete: Cascade)
+  movements     TreasuryTransaction[]
+
+  @@index([jacId])
+  @@map("treasury_accounts")
+}
+
+model TreasuryTransaction {
+  id                   String                  @id @default(uuid()) @db.Uuid
+  jacId                String                  @db.Uuid @map("jac_id")
+  accountId            String                  @db.Uuid @map("account_id")
+  registeredByUserId   String                  @db.Uuid @map("registered_by_user_id")
+  paymentTransactionId String?                 @db.Uuid @map("payment_transaction_id")
+  
+  type                 TreasuryTransactionType
+  category             TreasuryCategory
+  amount               Decimal                 @db.Decimal(12, 2)
+  balanceAfter         Decimal                 @map("balance_after") @db.Decimal(14, 2)
+  description          String                  @db.VarChar(300)
+  voucherUrl           String?                 @map("voucher_url") @db.VarChar(500)
+  transactionDate      DateTime                @default(now()) @map("transaction_date")
+  createdAt            DateTime                @default(now()) @map("created_at")
+
+  jac                  Jac                     @relation(fields: [jacId], references: [id], onDelete: Cascade)
+  account              TreasuryAccount         @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  registeredBy         User                    @relation(fields: [registeredByUserId], references: [id], onDelete: Restrict)
+  paymentTransaction   PaymentTransaction?     @relation(fields: [paymentTransactionId], references: [id], onDelete: SetNull)
+
+  @@index([jacId])
+  @@index([accountId])
+  @@index([type])
+  @@index([category])
+  @@map("treasury_transactions")
+}
+
+// =========================================================================
+// 5. MERCADO CAMPESINO (CATÁLOGO RURAL Y COMERCIO COMUNITARIO)
+// =========================================================================
+
+model ProducerProfile {
+  id                    String          @id @default(uuid()) @db.Uuid
+  userId                String          @unique @db.Uuid @map("user_id")
+  jacId                 String          @db.Uuid @map("jac_id") // JAC de procedencia del productor
+  farmName              String          @map("farm_name") @db.VarChar(120)
+  veredaName            String          @map("vereda_name") @db.VarChar(100)
+  bio                   String?         @db.VarChar(500)
+  whatsappContact       String          @map("whatsapp_contact") @db.VarChar(20)
+  isVerified            Boolean         @default(false) @map("is_verified")
+  rating                Decimal         @default(5.00) @db.Decimal(3, 2)
+  bannerImageUrl        String?         @map("banner_image_url") @db.VarChar(500)
+  acceptsOnlinePayment  Boolean         @default(true) @map("accepts_online_payment")
+  acceptsCashOnDelivery Boolean         @default(true) @map("accepts_cash_on_delivery")
+  isActive              Boolean         @default(true) @map("is_active")
+  createdAt             DateTime        @default(now()) @map("created_at")
+  updatedAt             DateTime        @updatedAt @map("updated_at")
+
+  user                  User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  jac                   Jac             @relation(fields: [jacId], references: [id], onDelete: Restrict)
+  products              MarketProduct[]
+  orders                MarketOrder[]
+
+  @@index([jacId])
+  @@map("producer_profiles")
+}
+
+model MarketCategory {
+  id           String          @id @default(uuid()) @db.Uuid
+  name         String          @unique @db.VarChar(100)
+  slug         String          @unique @db.VarChar(120)
+  iconUrl      String?         @map("icon_url") @db.VarChar(500)
+  displayOrder Int             @default(0) @map("display_order")
+  isActive     Boolean         @default(true) @map("is_active")
+  createdAt    DateTime        @default(now()) @map("created_at")
+
+  products     MarketProduct[]
+
+  @@map("market_categories")
+}
+
+model MarketProduct {
+  id                   String            @id @default(uuid()) @db.Uuid
+  producerId           String            @db.Uuid @map("producer_id")
+  jacId                String            @db.Uuid @map("jac_id") // Proveniencia comunal
+  categoryId           String            @db.Uuid @map("category_id")
+  
+  title                String            @db.VarChar(120)
+  description          String            @db.Text
+  price                Decimal           @db.Decimal(10, 2)
+  unit                 MarketUnit
+  stockQuantity        Decimal           @default(0.00) @map("stock_quantity") @db.Decimal(10, 2)
+  images               Json              @default("[]") // Lista de URLs de fotos
+  isOrganic            Boolean           @default(false) @map("is_organic")
+  harvestDate          DateTime?         @map("harvest_date")
+  
+  availableForDelivery Boolean           @default(true) @map("available_for_delivery")
+  availableForPickup   Boolean           @default(true) @map("available_for_pickup")
+  isAvailable          Boolean           @default(true) @map("is_available")
+  
+  createdAt            DateTime          @default(now()) @map("created_at")
+  updatedAt            DateTime          @updatedAt @map("updated_at")
+
+  producer             ProducerProfile   @relation(fields: [producerId], references: [id], onDelete: Cascade)
+  jac                  Jac               @relation(fields: [jacId], references: [id], onDelete: Restrict)
+  category             MarketCategory    @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  orderItems           MarketOrderItem[]
+
+  @@index([jacId])
+  @@index([producerId])
+  @@index([categoryId])
+  @@index([isAvailable])
+  @@map("market_products")
+}
+
+model MarketOrder {
+  id                  String               @id @default(uuid()) @db.Uuid
+  orderNumber         String               @unique @map("order_number") @db.VarChar(30)
+  producerId          String               @db.Uuid @map("producer_id")
+  jacId               String               @db.Uuid @map("jac_id")
+  buyerUserId         String?              @db.Uuid @map("buyer_user_id")
+  
+  buyerName           String               @map("buyer_name") @db.VarChar(100)
+  buyerPhone          String               @map("buyer_phone") @db.VarChar(20)
+  deliveryMethod      DeliveryMethod       @map("delivery_method")
+  deliveryAddress     String?              @map("delivery_address") @db.VarChar(255)
+  status              MarketOrderStatus    @default(PENDING_CONFIRMATION)
+  totalAmount         Decimal              @map("total_amount") @db.Decimal(12, 2)
+  paymentMethod       PaymentMethod        @map("payment_method")
+  customerNotes       String?              @map("customer_notes") @db.VarChar(500)
+  
+  createdAt           DateTime             @default(now()) @map("created_at")
+  updatedAt           DateTime             @updatedAt @map("updated_at")
+
+  producer            ProducerProfile      @relation(fields: [producerId], references: [id], onDelete: Restrict)
+  jac                 Jac                  @relation(fields: [jacId], references: [id], onDelete: Restrict)
+  buyerUser           User?                @relation(fields: [buyerUserId], references: [id], onDelete: SetNull)
+  items               MarketOrderItem[]
+  paymentTransactions PaymentTransaction[]
+
+  @@index([producerId])
+  @@index([jacId])
+  @@index([buyerUserId])
+  @@index([status])
+  @@map("market_orders")
+}
+
+model MarketOrderItem {
+  id           String        @id @default(uuid()) @db.Uuid
+  orderId      String        @db.Uuid @map("order_id")
+  productId    String        @db.Uuid @map("product_id")
+  productTitle String        @map("product_title") @db.VarChar(120)
+  quantity     Decimal       @db.Decimal(10, 2)
+  unitPrice    Decimal       @map("unit_price") @db.Decimal(10, 2)
+  subtotal     Decimal       @db.Decimal(12, 2)
+
+  order        MarketOrder   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product      MarketProduct @relation(fields: [productId], references: [id], onDelete: Restrict)
+
+  @@index([orderId])
+  @@index([productId])
+  @@map("market_order_items")
+}
+
+// =========================================================================
+// 6. NOTICIAS, COMUNICACIONES Y MINGAS
+// =========================================================================
+
+model Post {
+  id                             String            @id @default(uuid()) @db.Uuid
+  jacId                          String?           @db.Uuid @map("jac_id") // Nulo si es aviso municipal de Asojuntas
+  authorUserId                   String            @db.Uuid @map("author_user_id")
+  scope                          PostScope
+  type                           PostType
+  priority                       PostPriority      @default(NORMAL)
+  
+  title                          String            @db.VarChar(200)
+  slug                           String            @db.VarChar(220)
+  content                        String            @db.Text
+  excerpt                        String?           @db.VarChar(300)
+  coverImageUrl                  String?           @map("cover_image_url") @db.VarChar(500)
+  eventDate                      DateTime?         @map("event_date") // Fecha para minga comunitaria o evento
+  location                       String?           @db.VarChar(200)
+  requiresAttendanceConfirmation Boolean           @default(false) @map("requires_attendance_confirmation")
+  
+  isPublished                    Boolean           @default(true) @map("is_published")
+  publishedAt                    DateTime          @default(now()) @map("published_at")
+  expiresAt                      DateTime?         @map("expires_at")
+  
+  createdAt                      DateTime          @default(now()) @map("created_at")
+  updatedAt                      DateTime          @updatedAt @map("updated_at")
+
+  jac                            Jac?              @relation(fields: [jacId], references: [id], onDelete: Cascade)
+  author                         User              @relation(fields: [authorUserId], references: [id], onDelete: Restrict)
+  mingaAttendances               MingaAttendance[]
+
+  @@index([jacId])
+  @@index([scope])
+  @@index([type])
+  @@index([isPublished])
+  @@map("posts")
+}
+
+model MingaAttendance {
+  id          String    @id @default(uuid()) @db.Uuid
+  postId      String    @db.Uuid @map("post_id")
+  userId      String    @db.Uuid @map("user_id")
+  jacId       String    @db.Uuid @map("jac_id")
+  attending   Boolean   @default(true)
+  attended    Boolean   @default(false) // Confirmación de asistencia real en la minga
+  notes       String?   @db.VarChar(250)
+  confirmedAt DateTime  @default(now()) @map("confirmed_at")
+
+  post        Post      @relation(fields: [postId], references: [id], onDelete: Cascade)
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  jac         Jac       @relation(fields: [jacId], references: [id], onDelete: Cascade)
+
+  @@unique([postId, userId])
+  @@index([jacId])
+  @@index([postId])
+  @@map("minga_attendances")
+}
+
+// =========================================================================
+// 7. PARTICIPACIÓN CIUDADANA: PQRSD Y ASAMBLEAS
+// =========================================================================
+
+model PqrsdTicket {
+  id               String       @id @default(uuid()) @db.Uuid
+  ticketNumber     String       @unique @map("ticket_number") @db.VarChar(30)
+  jacId            String       @db.Uuid @map("jac_id")
+  userId           String?      @db.Uuid @map("user_id")
+  assignedToUserId String?      @db.Uuid @map("assigned_to_user_id")
+  
+  isAnonymous      Boolean      @default(false) @map("is_anonymous")
+  type             PqrsdType
+  status           PqrsdStatus  @default(RECEIVED)
+  subject          String       @db.VarChar(150)
+  description      String       @db.Text
+  attachments      Json         @default("[]")
+  responseText     String?      @map("response_text") @db.Text
+  respondedAt      DateTime?    @map("responded_at")
+  
+  createdAt        DateTime     @default(now()) @map("created_at")
+  updatedAt        DateTime     @updatedAt @map("updated_at")
+
+  jac              Jac          @relation(fields: [jacId], references: [id], onDelete: Cascade)
+  user             User?        @relation("CitizenTickets", fields: [userId], references: [id], onDelete: SetNull)
+  assignedTo       User?        @relation("AssignedTickets", fields: [assignedToUserId], references: [id], onDelete: SetNull)
+
+  @@index([jacId])
+  @@index([userId])
+  @@index([status])
+  @@map("pqrsd_tickets")
+}
+
+model Assembly {
+  id                       String          @id @default(uuid()) @db.Uuid
+  jacId                    String          @db.Uuid @map("jac_id")
+  title                    String          @db.VarChar(180)
+  description              String?         @db.Text
+  type                     AssemblyType
+  scheduledDate            DateTime        @map("scheduled_date")
+  location                 String          @db.VarChar(200)
+  quorumPercentageRequired Int             @default(50) @map("quorum_percentage_required")
+  quorumReached            Boolean         @default(false) @map("quorum_reached")
+  status                   AssemblyStatus  @default(SCHEDULED)
+  minutesPdfUrl            String?         @map("minutes_pdf_url") @db.VarChar(500)
+  
+  createdAt                DateTime        @default(now()) @map("created_at")
+  updatedAt                DateTime        @updatedAt @map("updated_at")
+
+  jac                      Jac             @relation(fields: [jacId], references: [id], onDelete: Cascade)
+  topics                   AssemblyTopic[]
+
+  @@index([jacId])
+  @@index([scheduledDate])
+  @@map("assemblies")
+}
+
+model AssemblyTopic {
+  id          String               @id @default(uuid()) @db.Uuid
+  assemblyId  String               @db.Uuid @map("assembly_id")
+  jacId       String               @db.Uuid @map("jac_id")
+  title       String               @db.VarChar(200)
+  description String?              @db.Text
+  options     Json                 // [{"id": "opt-1", "label": "A favor"}, ...]
+  isOpen      Boolean              @default(true) @map("is_open")
+  createdAt   DateTime             @default(now()) @map("created_at")
+
+  assembly    Assembly             @relation(fields: [assemblyId], references: [id], onDelete: Cascade)
+  jac         Jac                  @relation(fields: [jacId], references: [id], onDelete: Cascade)
+  votes       AssemblyVoteRecord[]
+
+  @@index([assemblyId])
+  @@index([jacId])
+  @@map("assembly_topics")
+}
+
+model AssemblyVoteRecord {
+  id               String        @id @default(uuid()) @db.Uuid
+  topicId          String        @db.Uuid @map("topic_id")
+  jacId            String        @db.Uuid @map("jac_id")
+  voterUserId      String        @db.Uuid @map("voter_user_id")
+  
+  // Garantía de voto secreto e integridad: Hash para evitar votos dobles y payload encriptado
+  voteHash         String        @map("vote_hash") @db.VarChar(64)
+  encryptedPayload String        @map("encrypted_payload") @db.Text
+  castAt           DateTime      @default(now()) @map("cast_at")
+
+  topic            AssemblyTopic @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  jac              Jac           @relation(fields: [jacId], references: [id], onDelete: Cascade)
+  voter            User          @relation(fields: [voterUserId], references: [id], onDelete: Restrict)
+
+  @@unique([topicId, voterUserId])
+  @@index([topicId])
+  @@index([jacId])
+  @@map("assembly_vote_records")
+}
+
+// =========================================================================
+// 8. AUDITORÍA GLOBAL Y NOTIFICACIONES MULTICANAL
+// =========================================================================
+
+model AuditLog {
+  id         String   @id @default(uuid()) @db.Uuid
+  jacId      String?  @db.Uuid @map("jac_id") // Nulo para acciones a nivel Asojuntas / Sistema
+  userId     String?  @db.Uuid @map("user_id")
+  action     String   @db.VarChar(50) // CREATE, UPDATE, DELETE, LOGIN, EXPORT
+  entityName String   @map("entity_name") @db.VarChar(50)
+  entityId   String   @map("entity_id") @db.VarChar(100)
+  oldValues  Json?    @map("old_values")
+  newValues  Json?    @map("new_values")
+  ipAddress  String?  @map("ip_address") @db.VarChar(45)
+  userAgent  String?  @map("user_agent") @db.VarChar(255)
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  jac        Jac?     @relation(fields: [jacId], references: [id], onDelete: SetNull)
+  user       User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([jacId])
+  @@index([userId])
+  @@index([entityName])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+model Notification {
+  id                String              @id @default(uuid()) @db.Uuid
+  jacId             String?             @db.Uuid @map("jac_id")
+  userId            String              @db.Uuid @map("user_id")
+  channel           NotificationChannel
+  title             String              @db.VarChar(150)
+  body              String              @db.Text
+  data              Json                @default("{}")
+  isRead            Boolean             @default(false) @map("is_read")
+  status            String              @default("PENDING") @db.VarChar(20) // PENDING, SENT, DELIVERED, FAILED
+  externalMessageId String?             @map("external_message_id") @db.VarChar(100)
+  createdAt         DateTime            @default(now()) @map("created_at")
+
+  jac               Jac?                @relation(fields: [jacId], references: [id], onDelete: SetNull)
+  user              User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([jacId])
+  @@index([userId])
+  @@index([isRead])
+  @@index([createdAt])
+  @@map("notifications")
+}
