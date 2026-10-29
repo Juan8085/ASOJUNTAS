@@ -35,5 +35,9 @@ jobs:
       - name: Typecheck TypeScript Monorepo
         run: pnpm turbo run check-types
 
+      - name: Run Automated Unit Tests
+        run: pnpm turbo run test
+
       - name: Production Build
         run: pnpm turbo run build
+
