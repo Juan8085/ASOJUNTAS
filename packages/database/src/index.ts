@@ -1,5 +1,7 @@
 import { PrismaClient } from "@prisma/client";
 
+declare const process: any;
+
 export * from "@prisma/client";
 
 declare global {
