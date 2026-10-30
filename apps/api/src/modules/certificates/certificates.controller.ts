@@ -63,6 +63,24 @@ export class CertificatesController {
     return this.certificatesService.getMyCertificates(user.sub, tenantId);
   }
 
+  @Get("jac-certificates")
+  @ApiBearerAuth()
+  @Roles(
+    UserRole.SUPER_ADMIN,
+    UserRole.JAC_ADMIN,
+    UserRole.JAC_PRESIDENT,
+    UserRole.JAC_SECRETARY,
+    UserRole.JAC_FISCAL
+  )
+  @UseGuards(TenantGuard, RolesGuard)
+  @ApiOperation({
+    summary: "Listar certificados emitidos en la JAC (Directivos)",
+    description: "Auditoría y consulta de todos los certificados generados con sus códigos de verificación y QR",
+  })
+  async getJacCertificates(@CurrentTenant() tenantId?: string) {
+    return this.certificatesService.getJacCertificates(tenantId);
+  }
+
   @Public()
   @Get("verify/:code")
   @ApiOperation({

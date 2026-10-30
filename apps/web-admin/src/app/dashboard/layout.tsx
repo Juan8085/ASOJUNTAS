@@ -3,6 +3,8 @@
 import { useEffect, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import Link from "next/link";
+import { useQuery } from "@tanstack/react-query";
+import { apiClient } from "@/lib/api-client";
 import { useAuthStore } from "@/lib/auth-store";
 import {
   LayoutDashboard,
@@ -74,8 +76,21 @@ export default function DashboardLayout({
     );
   }
 
+  const { data: allJacs } = useQuery<
+    Array<{ id: string; name: string; veredaOrBarrio: string }>
+  >({
+    queryKey: ["all-jacs-for-superadmin"],
+    queryFn: () => apiClient("/jacs"),
+    enabled: isSuperAdmin,
+  });
+
+  const activeJacFromAll = allJacs?.find((j) => j.id === currentJacId);
   const activeMembership =
     memberships.find((m) => m.jacId === currentJacId) || memberships[0];
+
+  const activeJacDisplayName = isSuperAdmin
+    ? activeJacFromAll?.name || (currentJacId ? activeMembership?.jacName || "JAC en Supervisión" : "Todas las JACs (Consolidado Municipal)")
+    : activeMembership?.jacName || "Junta de Acción Comunal";
 
   return (
     <div className="min-h-screen bg-slate-50 flex">
@@ -147,11 +162,20 @@ export default function DashboardLayout({
                   : "text-emerald-300 focus:ring-1 focus:ring-emerald-500"
               }`}
             >
-              {memberships.map((m) => (
-                <option key={m.id} value={m.jacId}>
-                  {m.jacName}
-                </option>
-              ))}
+              {isSuperAdmin && (
+                <option value="">🌐 Todas las JACs (Consolidado Municipal)</option>
+              )}
+              {isSuperAdmin && allJacs && allJacs.length > 0
+                ? allJacs.map((jac) => (
+                    <option key={jac.id} value={jac.id}>
+                      {jac.name} (Vereda {jac.veredaOrBarrio})
+                    </option>
+                  ))
+                : memberships.map((m) => (
+                    <option key={m.id} value={m.jacId}>
+                      {m.jacName}
+                    </option>
+                  ))}
             </select>
             <ChevronDown className="w-4 h-4 text-slate-400 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
           </div>
@@ -245,12 +269,12 @@ export default function DashboardLayout({
               <span className="font-semibold text-slate-800">
                 {isSuperAdmin
                   ? "Asojuntas Municipal • Nivel Central"
-                  : activeMembership?.jacName || "Junta de Acción Comunal"}
+                  : activeJacDisplayName}
               </span>
               <span>•</span>
               <span>
                 {isSuperAdmin
-                  ? `JAC Activa: ${activeMembership?.jacName || "Consolidado"}`
+                  ? `JAC: ${activeJacDisplayName}`
                   : `Libro Digital #${activeMembership?.bookNumber || 1}`}
               </span>
             </div>

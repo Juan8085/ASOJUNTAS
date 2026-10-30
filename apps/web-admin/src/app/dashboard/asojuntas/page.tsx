@@ -213,7 +213,7 @@ export default function AsojuntasDashboardPage() {
 
   const handleSwitchToJac = (jac: JacItem) => {
     switchJac(jac.id);
-    router.push("/dashboard");
+    router.push("/dashboard/affiliates");
   };
 
   return (

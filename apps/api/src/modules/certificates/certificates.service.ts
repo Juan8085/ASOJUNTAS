@@ -222,6 +222,65 @@ export class CertificatesService {
   }
 
   /**
+   * Listar todos los certificados emitidos en la JAC (para Directivos y Asojuntas)
+   */
+  async getJacCertificates(jacId?: string) {
+    const certificates = await this.prisma.certificate.findMany({
+      where: {
+        ...(jacId ? { jacId } : {}),
+      },
+      include: {
+        user: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            identificationType: true,
+            identificationNumber: true,
+          },
+        },
+        jac: {
+          select: {
+            id: true,
+            name: true,
+            legalPersonhoodNumber: true,
+            veredaOrBarrio: true,
+          },
+        },
+      },
+      orderBy: { issuedAt: "desc" },
+    });
+
+    const frontendBaseUrl = process.env.FRONTEND_URL || "http://localhost:3000";
+
+    return Promise.all(
+      certificates.map(async (cert) => {
+        const verificationUrl = `${frontendBaseUrl}/verify/${cert.verificationCode}`;
+        const qrCodeDataUrl = await QRCode.toDataURL(verificationUrl, {
+          errorCorrectionLevel: "H",
+          margin: 1,
+          width: 250,
+        });
+
+        return {
+          id: cert.id,
+          verificationCode: cert.verificationCode,
+          verificationUrl,
+          qrCodeDataUrl,
+          type: cert.type,
+          status: cert.status,
+          purpose: cert.purpose,
+          issuedAt: cert.issuedAt,
+          validUntil: cert.validUntil,
+          metadata: cert.metadata,
+          user: cert.user,
+          jac: cert.jac,
+        };
+      })
+    );
+  }
+
+  /**
    * Revocación formal de un certificado (exclusivo directivos)
    */
   async revokeCertificate(certificateId: string, jacId: string) {
