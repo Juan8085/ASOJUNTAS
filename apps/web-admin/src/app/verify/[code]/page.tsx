@@ -2,6 +2,7 @@
 
 import { use, useEffect, useState } from "react";
 import Link from "next/link";
+import { getApiBaseUrl } from "@/lib/api-client";
 import {
   ShieldCheck,
   CheckCircle2,
@@ -55,9 +56,6 @@ interface VerificationResponse {
   };
 }
 
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api/v1";
-
 export default function CertificateVerifyPage({
   params,
 }: {
@@ -74,7 +72,8 @@ export default function CertificateVerifyPage({
     async function verify() {
       setLoading(true);
       try {
-        const res = await fetch(`${API_BASE_URL}/certificates/verify/${encodeURIComponent(code)}`);
+        const apiUrl = getApiBaseUrl();
+        const res = await fetch(`${apiUrl}/certificates/verify/${encodeURIComponent(code)}`);
         const json = await res.json();
         setData(json);
       } catch (err) {
@@ -329,3 +328,4 @@ export default function CertificateVerifyPage({
     </div>
   );
 }
+

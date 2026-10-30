@@ -2,8 +2,17 @@
 
 import { useAuthStore } from "./auth-store";
 
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api/v1";
+export function getApiBaseUrl(): string {
+  if (process.env.NEXT_PUBLIC_API_URL) {
+    return process.env.NEXT_PUBLIC_API_URL;
+  }
+  if (typeof window !== "undefined" && window.location?.hostname) {
+    const protocol = window.location.protocol || "http:";
+    const hostname = window.location.hostname;
+    return `${protocol}//${hostname}:4000/api/v1`;
+  }
+  return "http://localhost:4000/api/v1";
+}
 
 export interface RequestOptions extends RequestInit {
   params?: Record<string, string | number | boolean | undefined>;
@@ -15,9 +24,10 @@ export async function apiClient<T>(
 ): Promise<T> {
   const { tokens, currentJacId, logout } = useAuthStore.getState();
 
+  const baseUrl = getApiBaseUrl();
   let url = endpoint.startsWith("http")
     ? endpoint
-    : `${API_BASE_URL}${endpoint.startsWith("/") ? "" : "/"}${endpoint}`;
+    : `${baseUrl}${endpoint.startsWith("/") ? "" : "/"}${endpoint}`;
 
   if (options.params) {
     const searchParams = new URLSearchParams();

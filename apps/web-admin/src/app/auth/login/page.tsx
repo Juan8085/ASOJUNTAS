@@ -7,10 +7,8 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { LoginSchema, LoginInput } from "@conectajac/shared";
 import { useAuthStore } from "@/lib/auth-store";
+import { getApiBaseUrl } from "@/lib/api-client";
 import { Lock, User, ArrowRight, AlertCircle, Building2, Eye, EyeOff } from "lucide-react";
-
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api/v1";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -36,7 +34,8 @@ export default function LoginPage() {
     setErrorMessage(null);
 
     try {
-      const response = await fetch(`${API_BASE_URL}/auth/login`, {
+      const apiUrl = getApiBaseUrl();
+      const response = await fetch(`${apiUrl}/auth/login`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
