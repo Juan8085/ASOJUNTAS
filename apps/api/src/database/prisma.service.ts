@@ -14,19 +14,19 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
   async onModuleInit() {
     try {
       await this.$connect();
-      this.logger.log("Conectado exitosamente a PostgreSQL (Prisma)");
+      this.logger.log("Conectado exitosamente a MongoDB Atlas (Prisma)");
     } catch (error) {
-      this.logger.warn(`Conexión diferida a PostgreSQL (Prisma): ${(error as Error).message}`);
+      this.logger.warn(`Conexión diferida a MongoDB Atlas (Prisma): ${(error as Error).message}`);
     }
   }
 
   async onModuleDestroy() {
     await this.$disconnect();
-    this.logger.log("Desconectado de PostgreSQL (Prisma)");
+    this.logger.log("Desconectado de MongoDB Atlas (Prisma)");
   }
 
   /**
-   * Helper para ejecutar consultas aplicando el contexto de Row-Level Security (RLS) en PostgreSQL
+   * Helper para ejecutar consultas aplicando contexto multi-tenant en ConectaJAC
    */
   async withTenant<T>(
     tenantId: string | null,
@@ -36,4 +36,3 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
     return withTenantContext(tenantId, isSuperAdmin, fn);
   }
 }
-

@@ -1,5 +1,5 @@
 datasource db {
-  provider = "postgresql"
+  provider = "mongodb"
   url      = env("DATABASE_URL")
 }
 
@@ -217,10 +217,10 @@ enum NotificationChannel {
 // =========================================================================
 
 model Municipality {
-  id         String      @id @default(uuid()) @db.Uuid
-  name       String      @db.VarChar(120)
-  department String      @db.VarChar(100)
-  daneCode   String      @unique @db.VarChar(10)
+  id         String      @id @default(auto()) @map("_id") @db.ObjectId
+  name       String
+  department String
+  daneCode   String      @unique @map("dane_code")
   createdAt  DateTime    @default(now()) @map("created_at")
   asojuntas  Asojuntas[]
   jacs       Jac[]
@@ -229,48 +229,48 @@ model Municipality {
 }
 
 model Asojuntas {
-  id                    String       @id @default(uuid()) @db.Uuid
-  municipalityId        String       @db.Uuid @map("municipality_id")
-  name                  String       @db.VarChar(150)
-  nit                   String       @unique @db.VarChar(20)
-  legalPersonhoodNumber String       @map("legal_personhood_number") @db.VarChar(50)
-  email                 String?      @db.VarChar(150)
-  phone                 String?      @db.VarChar(20)
-  address               String?      @db.VarChar(255)
+  id                    String       @id @default(auto()) @map("_id") @db.ObjectId
+  municipalityId        String       @map("municipality_id") @db.ObjectId
+  name                  String
+  nit                   String       @unique
+  legalPersonhoodNumber String       @map("legal_personhood_number")
+  email                 String?
+  phone                 String?
+  address               String?
   isActive              Boolean      @default(true) @map("is_active")
   createdAt             DateTime     @default(now()) @map("created_at")
   updatedAt             DateTime     @updatedAt @map("updated_at")
 
-  municipality          Municipality @relation(fields: [municipalityId], references: [id], onDelete: Restrict)
+  municipality          Municipality @relation(fields: [municipalityId], references: [id], onDelete: NoAction)
   jacs                  Jac[]
 
   @@map("asojuntas")
 }
 
 model Jac {
-  id                    String         @id @default(uuid()) @db.Uuid
-  municipalityId        String         @db.Uuid @map("municipality_id")
-  asojuntasId           String?        @db.Uuid @map("asojuntas_id")
-  name                  String         @db.VarChar(150)
-  legalPersonhoodNumber String         @map("legal_personhood_number") @db.VarChar(50)
-  nit                   String?        @unique @db.VarChar(20)
-  codeRup               String?        @unique @map("code_rup") @db.VarChar(50) // Registro Único Comunal
-  veredaOrBarrio        String         @map("vereda_or_barrio") @db.VarChar(100)
-  address               String?        @db.VarChar(255)
-  latitude              Decimal?       @db.Decimal(10, 8)
-  longitude             Decimal?       @db.Decimal(11, 8)
-  phone                 String?        @db.VarChar(20)
-  email                 String?        @db.VarChar(150)
-  logoUrl               String?        @map("logo_url") @db.VarChar(500)
-  officialSealUrl       String?        @map("official_seal_url") @db.VarChar(500)
-  primaryColor          String         @default("#059669") @map("primary_color") @db.VarChar(7)
-  bankAccounts          Json           @default("[]") @map("bank_accounts")
-  isActive              Boolean        @default(true) @map("is_active")
-  createdAt             DateTime       @default(now()) @map("created_at")
-  updatedAt             DateTime       @updatedAt @map("updated_at")
+  id                    String                @id @default(auto()) @map("_id") @db.ObjectId
+  municipalityId        String                @map("municipality_id") @db.ObjectId
+  asojuntasId           String?               @map("asojuntas_id") @db.ObjectId
+  name                  String
+  legalPersonhoodNumber String                @map("legal_personhood_number")
+  nit                   String?               @unique
+  codeRup               String?               @unique @map("code_rup") // Registro Único Comunal
+  veredaOrBarrio        String                @map("vereda_or_barrio")
+  address               String?
+  latitude              Float?
+  longitude             Float?
+  phone                 String?
+  email                 String?
+  logoUrl               String?               @map("logo_url")
+  officialSealUrl       String?               @map("official_seal_url")
+  primaryColor          String                @default("#059669") @map("primary_color")
+  bankAccounts          Json                  @default("[]") @map("bank_accounts")
+  isActive              Boolean               @default(true) @map("is_active")
+  createdAt             DateTime              @default(now()) @map("created_at")
+  updatedAt             DateTime              @updatedAt @map("updated_at")
 
-  municipality          Municipality   @relation(fields: [municipalityId], references: [id], onDelete: Restrict)
-  asojuntas             Asojuntas?     @relation(fields: [asojuntasId], references: [id], onDelete: SetNull)
+  municipality          Municipality          @relation(fields: [municipalityId], references: [id], onDelete: NoAction)
+  asojuntas             Asojuntas?            @relation(fields: [asojuntasId], references: [id], onDelete: SetNull)
 
   memberships           JacMembership[]
   certificates          Certificate[]
@@ -301,26 +301,26 @@ model Jac {
 // =========================================================================
 
 model User {
-  id                   String             @id @default(uuid()) @db.Uuid
-  identificationType   IdentificationType @default(CC) @map("identification_type")
-  identificationNumber String             @unique @map("identification_number") @db.VarChar(20)
-  firstName            String             @map("first_name") @db.VarChar(100)
-  lastName             String             @map("last_name") @db.VarChar(100)
-  email                String?            @unique @db.VarChar(150)
-  phone                String             @db.VarChar(20)
-  birthDate            DateTime?          @map("birth_date") @db.Date
-  gender               String?            @db.VarChar(10)
-  avatarUrl            String?            @map("avatar_url") @db.VarChar(500)
-  passwordHash         String             @map("password_hash") @db.VarChar(255)
-  isEmailVerified      Boolean            @default(false) @map("is_email_verified")
-  isPhoneVerified      Boolean            @default(false) @map("is_phone_verified")
-  isActive             Boolean            @default(true) @map("is_active")
-  createdAt            DateTime           @default(now()) @map("created_at")
-  updatedAt            DateTime           @updatedAt @map("updated_at")
+  id                   String                @id @default(auto()) @map("_id") @db.ObjectId
+  identificationType   IdentificationType    @default(CC) @map("identification_type")
+  identificationNumber String                @unique @map("identification_number")
+  firstName            String                @map("first_name")
+  lastName             String                @map("last_name")
+  email                String?               @unique
+  phone                String
+  birthDate            DateTime?             @map("birth_date")
+  gender               String?
+  avatarUrl            String?               @map("avatar_url")
+  passwordHash         String                @map("password_hash")
+  isEmailVerified      Boolean               @default(false) @map("is_email_verified")
+  isPhoneVerified      Boolean               @default(false) @map("is_phone_verified")
+  isActive             Boolean               @default(true) @map("is_active")
+  createdAt            DateTime              @default(now()) @map("created_at")
+  updatedAt            DateTime              @updatedAt @map("updated_at")
 
   memberships          JacMembership[]
-  issuedCertificates   Certificate[]      @relation("IssuedCertificates")
-  receivedCertificates Certificate[]      @relation("ReceivedCertificates")
+  issuedCertificates   Certificate[]         @relation("IssuedCertificates")
+  receivedCertificates Certificate[]         @relation("ReceivedCertificates")
   feeObligations       UserFeeObligation[]
   paymentTransactions  PaymentTransaction[]
   registeredMovements  TreasuryTransaction[]
@@ -328,21 +328,20 @@ model User {
   marketOrders         MarketOrder[]
   authoredPosts        Post[]
   mingaAttendances     MingaAttendance[]
-  pqrsdTickets         PqrsdTicket[]      @relation("CitizenTickets")
-  assignedTickets      PqrsdTicket[]      @relation("AssignedTickets")
+  pqrsdTickets         PqrsdTicket[]         @relation("CitizenTickets")
+  assignedTickets      PqrsdTicket[]         @relation("AssignedTickets")
   assemblyVoteRecords  AssemblyVoteRecord[]
   auditLogs            AuditLog[]
   notifications        Notification[]
 
   @@index([phone])
-  @@index([identificationNumber])
   @@map("users")
 }
 
 model JacMembership {
-  id                   String           @id @default(uuid()) @db.Uuid
-  jacId                String           @db.Uuid @map("jac_id")
-  userId               String           @db.Uuid @map("user_id")
+  id                   String           @id @default(auto()) @map("_id") @db.ObjectId
+  jacId                String           @map("jac_id") @db.ObjectId
+  userId               String           @map("user_id") @db.ObjectId
   role                 UserRole         @default(CITIZEN)
   status               MembershipStatus @default(ACTIVE)
   
@@ -351,15 +350,15 @@ model JacMembership {
   folioNumber          Int              @map("folio_number")
   affiliationDate      DateTime         @default(now()) @map("affiliation_date")
   disaffiliationDate   DateTime?        @map("disaffiliation_date")
-  disaffiliationReason String?          @map("disaffiliation_reason") @db.VarChar(255)
+  disaffiliationReason String?          @map("disaffiliation_reason")
   
   // Datos socioeconómicos veredales
-  address              String           @db.VarChar(255)
-  veredaOrBarrio       String           @map("vereda_or_barrio") @db.VarChar(100)
-  occupation           String?          @db.VarChar(100)
+  address              String
+  veredaOrBarrio       String           @map("vereda_or_barrio")
+  occupation           String?
   hasLandOrFarm        Boolean          @default(false) @map("has_land_or_farm")
-  farmName             String?          @map("farm_name") @db.VarChar(120)
-  observations         String?          @db.VarChar(500)
+  farmName             String?          @map("farm_name")
+  observations         String?
   
   createdAt            DateTime         @default(now()) @map("created_at")
   updatedAt            DateTime         @updatedAt @map("updated_at")
@@ -380,17 +379,17 @@ model JacMembership {
 // =========================================================================
 
 model Certificate {
-  id               String            @id @default(uuid()) @db.Uuid
-  jacId            String            @db.Uuid @map("jac_id")
-  userId           String            @db.Uuid @map("user_id")
-  issuedByUserId   String            @db.Uuid @map("issued_by_user_id")
+  id               String            @id @default(auto()) @map("_id") @db.ObjectId
+  jacId            String            @map("jac_id") @db.ObjectId
+  userId           String            @map("user_id") @db.ObjectId
+  issuedByUserId   String            @map("issued_by_user_id") @db.ObjectId
   type             CertificateType
   status           CertificateStatus @default(VALID)
   
-  verificationCode String            @unique @map("verification_code") @db.VarChar(36)
-  qrSecurityToken  String            @unique @map("qr_security_token") @db.VarChar(128)
-  pdfUrl           String?           @map("pdf_url") @db.VarChar(500)
-  purpose          String            @db.VarChar(300)
+  verificationCode String            @unique @map("verification_code")
+  qrSecurityToken  String            @unique @map("qr_security_token")
+  pdfUrl           String?           @map("pdf_url")
+  purpose          String
   
   issuedAt         DateTime          @default(now()) @map("issued_at")
   validUntil       DateTime          @map("valid_until")
@@ -400,12 +399,11 @@ model Certificate {
   updatedAt        DateTime          @updatedAt @map("updated_at")
 
   jac              Jac               @relation(fields: [jacId], references: [id], onDelete: Cascade)
-  user             User              @relation("ReceivedCertificates", fields: [userId], references: [id], onDelete: Restrict)
-  issuedBy         User              @relation("IssuedCertificates", fields: [issuedByUserId], references: [id], onDelete: Restrict)
+  user             User              @relation("ReceivedCertificates", fields: [userId], references: [id], onDelete: NoAction)
+  issuedBy         User              @relation("IssuedCertificates", fields: [issuedByUserId], references: [id], onDelete: NoAction)
 
   @@index([jacId])
   @@index([userId])
-  @@index([verificationCode])
   @@map("certificates")
 }
 
@@ -414,13 +412,13 @@ model Certificate {
 // =========================================================================
 
 model FeeConfiguration {
-  id          String              @id @default(uuid()) @db.Uuid
-  jacId       String              @db.Uuid @map("jac_id")
-  name        String              @db.VarChar(120)
-  description String?             @db.VarChar(500)
+  id          String              @id @default(auto()) @map("_id") @db.ObjectId
+  jacId       String              @map("jac_id") @db.ObjectId
+  name        String
+  description String?
   type        FeeType
   periodicity FeePeriodicity
-  amount      Decimal             @db.Decimal(12, 2)
+  amount      Float
   dueDateDay  Int                 @default(15) @map("due_date_day")
   isActive    Boolean             @default(true) @map("is_active")
   createdAt   DateTime            @default(now()) @map("created_at")
@@ -434,13 +432,13 @@ model FeeConfiguration {
 }
 
 model UserFeeObligation {
-  id                  String               @id @default(uuid()) @db.Uuid
-  jacId               String               @db.Uuid @map("jac_id")
-  userId              String               @db.Uuid @map("user_id")
-  feeConfigId         String               @db.Uuid @map("fee_config_id")
-  period              String               @db.VarChar(20) // Ej: "2026-03", "2026-ANUAL"
-  amount              Decimal              @db.Decimal(12, 2)
-  paidAmount          Decimal              @default(0.00) @map("paid_amount") @db.Decimal(12, 2)
+  id                  String               @id @default(auto()) @map("_id") @db.ObjectId
+  jacId               String               @map("jac_id") @db.ObjectId
+  userId              String               @map("user_id") @db.ObjectId
+  feeConfigId         String               @map("fee_config_id") @db.ObjectId
+  period              String               // Ej: "2026-03", "2026-ANUAL"
+  amount              Float
+  paidAmount          Float                @default(0.00) @map("paid_amount")
   status              ObligationStatus     @default(PENDING)
   dueDate             DateTime             @map("due_date")
   createdAt           DateTime             @default(now()) @map("created_at")
@@ -448,7 +446,7 @@ model UserFeeObligation {
 
   jac                 Jac                  @relation(fields: [jacId], references: [id], onDelete: Cascade)
   user                User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
-  feeConfig           FeeConfiguration     @relation(fields: [feeConfigId], references: [id], onDelete: Restrict)
+  feeConfig           FeeConfiguration     @relation(fields: [feeConfigId], references: [id], onDelete: NoAction)
   paymentTransactions PaymentTransaction[]
 
   @@unique([jacId, userId, feeConfigId, period])
@@ -459,35 +457,35 @@ model UserFeeObligation {
 }
 
 model PaymentTransaction {
-  id                   String               @id @default(uuid()) @db.Uuid
-  idempotencyKey       String               @unique @map("idempotency_key") @db.VarChar(64)
-  jacId                String               @db.Uuid @map("jac_id")
-  userId               String               @db.Uuid @map("user_id")
-  feeObligationId      String?              @db.Uuid @map("fee_obligation_id")
-  marketOrderId        String?              @db.Uuid @map("market_order_id")
+  id                   String                @id @default(auto()) @map("_id") @db.ObjectId
+  idempotencyKey       String                @unique @map("idempotency_key")
+  jacId                String                @map("jac_id") @db.ObjectId
+  userId               String                @map("user_id") @db.ObjectId
+  feeObligationId      String?               @map("fee_obligation_id") @db.ObjectId
+  marketOrderId        String?               @map("market_order_id") @db.ObjectId
   
-  amount               Decimal              @db.Decimal(12, 2)
-  currency             String               @default("COP") @db.VarChar(3)
+  amount               Float
+  currency             String                @default("COP")
   gateway              PaymentGateway
-  paymentMethod        PaymentMethod        @map("payment_method")
-  status               PaymentStatus        @default(PENDING)
+  paymentMethod        PaymentMethod         @map("payment_method")
+  status               PaymentStatus         @default(PENDING)
   
-  gatewayTransactionId String?              @map("gateway_transaction_id") @db.VarChar(100)
-  gatewayReference     String?              @map("gateway_reference") @db.VarChar(100)
-  gatewaySignature     String?              @map("gateway_signature") @db.VarChar(255)
-  webhookPayload       Json?                @map("webhook_payload")
-  receiptNumber        String?              @map("receipt_number") @db.VarChar(50)
-  voucherUrl           String?              @map("voucher_url") @db.VarChar(500)
-  paidAt               DateTime?            @map("paid_at")
-  metadata             Json                 @default("{}")
+  gatewayTransactionId String?               @map("gateway_transaction_id")
+  gatewayReference     String?               @map("gateway_reference")
+  gatewaySignature     String?               @map("gateway_signature")
+  webhookPayload       Json?                 @map("webhook_payload")
+  receiptNumber        String?               @map("receipt_number")
+  voucherUrl           String?               @map("voucher_url")
+  paidAt               DateTime?             @map("paid_at")
+  metadata             Json                  @default("{}")
   
-  createdAt            DateTime             @default(now()) @map("created_at")
-  updatedAt            DateTime             @updatedAt @map("updated_at")
+  createdAt            DateTime              @default(now()) @map("created_at")
+  updatedAt            DateTime              @updatedAt @map("updated_at")
 
-  jac                  Jac                  @relation(fields: [jacId], references: [id], onDelete: Cascade)
-  user                 User                 @relation(fields: [userId], references: [id], onDelete: Restrict)
-  feeObligation        UserFeeObligation?   @relation(fields: [feeObligationId], references: [id], onDelete: SetNull)
-  marketOrder          MarketOrder?         @relation(fields: [marketOrderId], references: [id], onDelete: SetNull)
+  jac                  Jac                   @relation(fields: [jacId], references: [id], onDelete: Cascade)
+  user                 User                  @relation(fields: [userId], references: [id], onDelete: NoAction)
+  feeObligation        UserFeeObligation?    @relation(fields: [feeObligationId], references: [id], onDelete: SetNull)
+  marketOrder          MarketOrder?          @relation(fields: [marketOrderId], references: [id], onDelete: SetNull)
   treasuryTransactions TreasuryTransaction[]
 
   @@index([jacId])
@@ -498,12 +496,12 @@ model PaymentTransaction {
 }
 
 model TreasuryAccount {
-  id            String                @id @default(uuid()) @db.Uuid
-  jacId         String                @db.Uuid @map("jac_id")
-  name          String                @db.VarChar(100)
+  id            String                @id @default(auto()) @map("_id") @db.ObjectId
+  jacId         String                @map("jac_id") @db.ObjectId
+  name          String
   type          TreasuryAccountType
-  balance       Decimal               @default(0.00) @db.Decimal(14, 2)
-  accountNumber String?               @map("account_number") @db.VarChar(50)
+  balance       Float                 @default(0.00)
+  accountNumber String?               @map("account_number")
   isActive      Boolean               @default(true) @map("is_active")
   createdAt     DateTime              @default(now()) @map("created_at")
   updatedAt     DateTime              @updatedAt @map("updated_at")
@@ -516,24 +514,24 @@ model TreasuryAccount {
 }
 
 model TreasuryTransaction {
-  id                   String                  @id @default(uuid()) @db.Uuid
-  jacId                String                  @db.Uuid @map("jac_id")
-  accountId            String                  @db.Uuid @map("account_id")
-  registeredByUserId   String                  @db.Uuid @map("registered_by_user_id")
-  paymentTransactionId String?                 @db.Uuid @map("payment_transaction_id")
+  id                   String                  @id @default(auto()) @map("_id") @db.ObjectId
+  jacId                String                  @map("jac_id") @db.ObjectId
+  accountId            String                  @map("account_id") @db.ObjectId
+  registeredByUserId   String                  @map("registered_by_user_id") @db.ObjectId
+  paymentTransactionId String?                 @map("payment_transaction_id") @db.ObjectId
   
   type                 TreasuryTransactionType
   category             TreasuryCategory
-  amount               Decimal                 @db.Decimal(12, 2)
-  balanceAfter         Decimal                 @map("balance_after") @db.Decimal(14, 2)
-  description          String                  @db.VarChar(300)
-  voucherUrl           String?                 @map("voucher_url") @db.VarChar(500)
+  amount               Float
+  balanceAfter         Float                   @map("balance_after")
+  description          String
+  voucherUrl           String?                 @map("voucher_url")
   transactionDate      DateTime                @default(now()) @map("transaction_date")
   createdAt            DateTime                @default(now()) @map("created_at")
 
   jac                  Jac                     @relation(fields: [jacId], references: [id], onDelete: Cascade)
-  account              TreasuryAccount         @relation(fields: [accountId], references: [id], onDelete: Restrict)
-  registeredBy         User                    @relation(fields: [registeredByUserId], references: [id], onDelete: Restrict)
+  account              TreasuryAccount         @relation(fields: [accountId], references: [id], onDelete: NoAction)
+  registeredBy         User                    @relation(fields: [registeredByUserId], references: [id], onDelete: NoAction)
   paymentTransaction   PaymentTransaction?     @relation(fields: [paymentTransactionId], references: [id], onDelete: SetNull)
 
   @@index([jacId])
@@ -548,16 +546,16 @@ model TreasuryTransaction {
 // =========================================================================
 
 model ProducerProfile {
-  id                    String          @id @default(uuid()) @db.Uuid
-  userId                String          @unique @db.Uuid @map("user_id")
-  jacId                 String          @db.Uuid @map("jac_id") // JAC de procedencia del productor
-  farmName              String          @map("farm_name") @db.VarChar(120)
-  veredaName            String          @map("vereda_name") @db.VarChar(100)
-  bio                   String?         @db.VarChar(500)
-  whatsappContact       String          @map("whatsapp_contact") @db.VarChar(20)
+  id                    String          @id @default(auto()) @map("_id") @db.ObjectId
+  userId                String          @unique @map("user_id") @db.ObjectId
+  jacId                 String          @map("jac_id") @db.ObjectId
+  farmName              String          @map("farm_name")
+  veredaName            String          @map("vereda_name")
+  bio                   String?
+  whatsappContact       String          @map("whatsapp_contact")
   isVerified            Boolean         @default(false) @map("is_verified")
-  rating                Decimal         @default(5.00) @db.Decimal(3, 2)
-  bannerImageUrl        String?         @map("banner_image_url") @db.VarChar(500)
+  rating                Float           @default(5.00)
+  bannerImageUrl        String?         @map("banner_image_url")
   acceptsOnlinePayment  Boolean         @default(true) @map("accepts_online_payment")
   acceptsCashOnDelivery Boolean         @default(true) @map("accepts_cash_on_delivery")
   isActive              Boolean         @default(true) @map("is_active")
@@ -565,7 +563,7 @@ model ProducerProfile {
   updatedAt             DateTime        @updatedAt @map("updated_at")
 
   user                  User            @relation(fields: [userId], references: [id], onDelete: Cascade)
-  jac                   Jac             @relation(fields: [jacId], references: [id], onDelete: Restrict)
+  jac                   Jac             @relation(fields: [jacId], references: [id], onDelete: NoAction)
   products              MarketProduct[]
   orders                MarketOrder[]
 
@@ -574,10 +572,10 @@ model ProducerProfile {
 }
 
 model MarketCategory {
-  id           String          @id @default(uuid()) @db.Uuid
-  name         String          @unique @db.VarChar(100)
-  slug         String          @unique @db.VarChar(120)
-  iconUrl      String?         @map("icon_url") @db.VarChar(500)
+  id           String          @id @default(auto()) @map("_id") @db.ObjectId
+  name         String          @unique
+  slug         String          @unique
+  iconUrl      String?         @map("icon_url")
   displayOrder Int             @default(0) @map("display_order")
   isActive     Boolean         @default(true) @map("is_active")
   createdAt    DateTime        @default(now()) @map("created_at")
@@ -588,17 +586,17 @@ model MarketCategory {
 }
 
 model MarketProduct {
-  id                   String            @id @default(uuid()) @db.Uuid
-  producerId           String            @db.Uuid @map("producer_id")
-  jacId                String            @db.Uuid @map("jac_id") // Proveniencia comunal
-  categoryId           String            @db.Uuid @map("category_id")
+  id                   String            @id @default(auto()) @map("_id") @db.ObjectId
+  producerId           String            @map("producer_id") @db.ObjectId
+  jacId                String            @map("jac_id") @db.ObjectId
+  categoryId           String            @map("category_id") @db.ObjectId
   
-  title                String            @db.VarChar(120)
-  description          String            @db.Text
-  price                Decimal           @db.Decimal(10, 2)
+  title                String
+  description          String
+  price                Float
   unit                 MarketUnit
-  stockQuantity        Decimal           @default(0.00) @map("stock_quantity") @db.Decimal(10, 2)
-  images               Json              @default("[]") // Lista de URLs de fotos
+  stockQuantity        Float             @default(0.00) @map("stock_quantity")
+  images               Json              @default("[]")
   isOrganic            Boolean           @default(false) @map("is_organic")
   harvestDate          DateTime?         @map("harvest_date")
   
@@ -610,8 +608,8 @@ model MarketProduct {
   updatedAt            DateTime          @updatedAt @map("updated_at")
 
   producer             ProducerProfile   @relation(fields: [producerId], references: [id], onDelete: Cascade)
-  jac                  Jac               @relation(fields: [jacId], references: [id], onDelete: Restrict)
-  category             MarketCategory    @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  jac                  Jac               @relation(fields: [jacId], references: [id], onDelete: NoAction)
+  category             MarketCategory    @relation(fields: [categoryId], references: [id], onDelete: NoAction)
   orderItems           MarketOrderItem[]
 
   @@index([jacId])
@@ -622,26 +620,26 @@ model MarketProduct {
 }
 
 model MarketOrder {
-  id                  String               @id @default(uuid()) @db.Uuid
-  orderNumber         String               @unique @map("order_number") @db.VarChar(30)
-  producerId          String               @db.Uuid @map("producer_id")
-  jacId               String               @db.Uuid @map("jac_id")
-  buyerUserId         String?              @db.Uuid @map("buyer_user_id")
+  id                  String               @id @default(auto()) @map("_id") @db.ObjectId
+  orderNumber         String               @unique @map("order_number")
+  producerId          String               @map("producer_id") @db.ObjectId
+  jacId               String               @map("jac_id") @db.ObjectId
+  buyerUserId         String?              @map("buyer_user_id") @db.ObjectId
   
-  buyerName           String               @map("buyer_name") @db.VarChar(100)
-  buyerPhone          String               @map("buyer_phone") @db.VarChar(20)
+  buyerName           String               @map("buyer_name")
+  buyerPhone          String               @map("buyer_phone")
   deliveryMethod      DeliveryMethod       @map("delivery_method")
-  deliveryAddress     String?              @map("delivery_address") @db.VarChar(255)
+  deliveryAddress     String?              @map("delivery_address")
   status              MarketOrderStatus    @default(PENDING_CONFIRMATION)
-  totalAmount         Decimal              @map("total_amount") @db.Decimal(12, 2)
+  totalAmount         Float                @map("total_amount")
   paymentMethod       PaymentMethod        @map("payment_method")
-  customerNotes       String?              @map("customer_notes") @db.VarChar(500)
+  customerNotes       String?              @map("customer_notes")
   
   createdAt           DateTime             @default(now()) @map("created_at")
   updatedAt           DateTime             @updatedAt @map("updated_at")
 
-  producer            ProducerProfile      @relation(fields: [producerId], references: [id], onDelete: Restrict)
-  jac                 Jac                  @relation(fields: [jacId], references: [id], onDelete: Restrict)
+  producer            ProducerProfile      @relation(fields: [producerId], references: [id], onDelete: NoAction)
+  jac                 Jac                  @relation(fields: [jacId], references: [id], onDelete: NoAction)
   buyerUser           User?                @relation(fields: [buyerUserId], references: [id], onDelete: SetNull)
   items               MarketOrderItem[]
   paymentTransactions PaymentTransaction[]
@@ -654,16 +652,16 @@ model MarketOrder {
 }
 
 model MarketOrderItem {
-  id           String        @id @default(uuid()) @db.Uuid
-  orderId      String        @db.Uuid @map("order_id")
-  productId    String        @db.Uuid @map("product_id")
-  productTitle String        @map("product_title") @db.VarChar(120)
-  quantity     Decimal       @db.Decimal(10, 2)
-  unitPrice    Decimal       @map("unit_price") @db.Decimal(10, 2)
-  subtotal     Decimal       @db.Decimal(12, 2)
+  id           String        @id @default(auto()) @map("_id") @db.ObjectId
+  orderId      String        @map("order_id") @db.ObjectId
+  productId    String        @map("product_id") @db.ObjectId
+  productTitle String        @map("product_title")
+  quantity     Float
+  unitPrice    Float         @map("unit_price")
+  subtotal     Float
 
   order        MarketOrder   @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  product      MarketProduct @relation(fields: [productId], references: [id], onDelete: Restrict)
+  product      MarketProduct @relation(fields: [productId], references: [id], onDelete: NoAction)
 
   @@index([orderId])
   @@index([productId])
@@ -675,20 +673,20 @@ model MarketOrderItem {
 // =========================================================================
 
 model Post {
-  id                             String            @id @default(uuid()) @db.Uuid
-  jacId                          String?           @db.Uuid @map("jac_id") // Nulo si es aviso municipal de Asojuntas
-  authorUserId                   String            @db.Uuid @map("author_user_id")
+  id                             String            @id @default(auto()) @map("_id") @db.ObjectId
+  jacId                          String?           @map("jac_id") @db.ObjectId
+  authorUserId                   String            @map("author_user_id") @db.ObjectId
   scope                          PostScope
   type                           PostType
   priority                       PostPriority      @default(NORMAL)
   
-  title                          String            @db.VarChar(200)
-  slug                           String            @db.VarChar(220)
-  content                        String            @db.Text
-  excerpt                        String?           @db.VarChar(300)
-  coverImageUrl                  String?           @map("cover_image_url") @db.VarChar(500)
-  eventDate                      DateTime?         @map("event_date") // Fecha para minga comunitaria o evento
-  location                       String?           @db.VarChar(200)
+  title                          String
+  slug                           String
+  content                        String
+  excerpt                        String?
+  coverImageUrl                  String?           @map("cover_image_url")
+  eventDate                      DateTime?         @map("event_date")
+  location                       String?
   requiresAttendanceConfirmation Boolean           @default(false) @map("requires_attendance_confirmation")
   
   isPublished                    Boolean           @default(true) @map("is_published")
@@ -699,7 +697,7 @@ model Post {
   updatedAt                      DateTime          @updatedAt @map("updated_at")
 
   jac                            Jac?              @relation(fields: [jacId], references: [id], onDelete: Cascade)
-  author                         User              @relation(fields: [authorUserId], references: [id], onDelete: Restrict)
+  author                         User              @relation(fields: [authorUserId], references: [id], onDelete: NoAction)
   mingaAttendances               MingaAttendance[]
 
   @@index([jacId])
@@ -710,13 +708,13 @@ model Post {
 }
 
 model MingaAttendance {
-  id          String    @id @default(uuid()) @db.Uuid
-  postId      String    @db.Uuid @map("post_id")
-  userId      String    @db.Uuid @map("user_id")
-  jacId       String    @db.Uuid @map("jac_id")
+  id          String    @id @default(auto()) @map("_id") @db.ObjectId
+  postId      String    @map("post_id") @db.ObjectId
+  userId      String    @map("user_id") @db.ObjectId
+  jacId       String    @map("jac_id") @db.ObjectId
   attending   Boolean   @default(true)
-  attended    Boolean   @default(false) // Confirmación de asistencia real en la minga
-  notes       String?   @db.VarChar(250)
+  attended    Boolean   @default(false)
+  notes       String?
   confirmedAt DateTime  @default(now()) @map("confirmed_at")
 
   post        Post      @relation(fields: [postId], references: [id], onDelete: Cascade)
@@ -734,19 +732,19 @@ model MingaAttendance {
 // =========================================================================
 
 model PqrsdTicket {
-  id               String       @id @default(uuid()) @db.Uuid
-  ticketNumber     String       @unique @map("ticket_number") @db.VarChar(30)
-  jacId            String       @db.Uuid @map("jac_id")
-  userId           String?      @db.Uuid @map("user_id")
-  assignedToUserId String?      @db.Uuid @map("assigned_to_user_id")
+  id               String       @id @default(auto()) @map("_id") @db.ObjectId
+  ticketNumber     String       @unique @map("ticket_number")
+  jacId            String       @map("jac_id") @db.ObjectId
+  userId           String?      @map("user_id") @db.ObjectId
+  assignedToUserId String?      @map("assigned_to_user_id") @db.ObjectId
   
   isAnonymous      Boolean      @default(false) @map("is_anonymous")
   type             PqrsdType
   status           PqrsdStatus  @default(RECEIVED)
-  subject          String       @db.VarChar(150)
-  description      String       @db.Text
+  subject          String
+  description      String
   attachments      Json         @default("[]")
-  responseText     String?      @map("response_text") @db.Text
+  responseText     String?      @map("response_text")
   respondedAt      DateTime?    @map("responded_at")
   
   createdAt        DateTime     @default(now()) @map("created_at")
@@ -763,17 +761,17 @@ model PqrsdTicket {
 }
 
 model Assembly {
-  id                       String          @id @default(uuid()) @db.Uuid
-  jacId                    String          @db.Uuid @map("jac_id")
-  title                    String          @db.VarChar(180)
-  description              String?         @db.Text
+  id                       String          @id @default(auto()) @map("_id") @db.ObjectId
+  jacId                    String          @map("jac_id") @db.ObjectId
+  title                    String
+  description              String?
   type                     AssemblyType
   scheduledDate            DateTime        @map("scheduled_date")
-  location                 String          @db.VarChar(200)
+  location                 String
   quorumPercentageRequired Int             @default(50) @map("quorum_percentage_required")
   quorumReached            Boolean         @default(false) @map("quorum_reached")
   status                   AssemblyStatus  @default(SCHEDULED)
-  minutesPdfUrl            String?         @map("minutes_pdf_url") @db.VarChar(500)
+  minutesPdfUrl            String?         @map("minutes_pdf_url")
   
   createdAt                DateTime        @default(now()) @map("created_at")
   updatedAt                DateTime        @updatedAt @map("updated_at")
@@ -787,11 +785,11 @@ model Assembly {
 }
 
 model AssemblyTopic {
-  id          String               @id @default(uuid()) @db.Uuid
-  assemblyId  String               @db.Uuid @map("assembly_id")
-  jacId       String               @db.Uuid @map("jac_id")
-  title       String               @db.VarChar(200)
-  description String?              @db.Text
+  id          String               @id @default(auto()) @map("_id") @db.ObjectId
+  assemblyId  String               @map("assembly_id") @db.ObjectId
+  jacId       String               @map("jac_id") @db.ObjectId
+  title       String
+  description String?
   options     Json                 // [{"id": "opt-1", "label": "A favor"}, ...]
   isOpen      Boolean              @default(true) @map("is_open")
   createdAt   DateTime             @default(now()) @map("created_at")
@@ -806,19 +804,18 @@ model AssemblyTopic {
 }
 
 model AssemblyVoteRecord {
-  id               String        @id @default(uuid()) @db.Uuid
-  topicId          String        @db.Uuid @map("topic_id")
-  jacId            String        @db.Uuid @map("jac_id")
-  voterUserId      String        @db.Uuid @map("voter_user_id")
+  id               String        @id @default(auto()) @map("_id") @db.ObjectId
+  topicId          String        @map("topic_id") @db.ObjectId
+  jacId            String        @map("jac_id") @db.ObjectId
+  voterUserId      String        @map("voter_user_id") @db.ObjectId
   
-  // Garantía de voto secreto e integridad: Hash para evitar votos dobles y payload encriptado
-  voteHash         String        @map("vote_hash") @db.VarChar(64)
-  encryptedPayload String        @map("encrypted_payload") @db.Text
+  voteHash         String        @map("vote_hash")
+  encryptedPayload String        @map("encrypted_payload")
   castAt           DateTime      @default(now()) @map("cast_at")
 
   topic            AssemblyTopic @relation(fields: [topicId], references: [id], onDelete: Cascade)
   jac              Jac           @relation(fields: [jacId], references: [id], onDelete: Cascade)
-  voter            User          @relation(fields: [voterUserId], references: [id], onDelete: Restrict)
+  voter            User          @relation(fields: [voterUserId], references: [id], onDelete: NoAction)
 
   @@unique([topicId, voterUserId])
   @@index([topicId])
@@ -831,16 +828,16 @@ model AssemblyVoteRecord {
 // =========================================================================
 
 model AuditLog {
-  id         String   @id @default(uuid()) @db.Uuid
-  jacId      String?  @db.Uuid @map("jac_id") // Nulo para acciones a nivel Asojuntas / Sistema
-  userId     String?  @db.Uuid @map("user_id")
-  action     String   @db.VarChar(50) // CREATE, UPDATE, DELETE, LOGIN, EXPORT
-  entityName String   @map("entity_name") @db.VarChar(50)
-  entityId   String   @map("entity_id") @db.VarChar(100)
+  id         String   @id @default(auto()) @map("_id") @db.ObjectId
+  jacId      String?  @map("jac_id") @db.ObjectId
+  userId     String?  @map("user_id") @db.ObjectId
+  action     String
+  entityName String   @map("entity_name")
+  entityId   String   @map("entity_id")
   oldValues  Json?    @map("old_values")
   newValues  Json?    @map("new_values")
-  ipAddress  String?  @map("ip_address") @db.VarChar(45)
-  userAgent  String?  @map("user_agent") @db.VarChar(255)
+  ipAddress  String?  @map("ip_address")
+  userAgent  String?  @map("user_agent")
   createdAt  DateTime @default(now()) @map("created_at")
 
   jac        Jac?     @relation(fields: [jacId], references: [id], onDelete: SetNull)
@@ -854,16 +851,16 @@ model AuditLog {
 }
 
 model Notification {
-  id                String              @id @default(uuid()) @db.Uuid
-  jacId             String?             @db.Uuid @map("jac_id")
-  userId            String              @db.Uuid @map("user_id")
+  id                String              @id @default(auto()) @map("_id") @db.ObjectId
+  jacId             String?             @map("jac_id") @db.ObjectId
+  userId            String              @map("user_id") @db.ObjectId
   channel           NotificationChannel
-  title             String              @db.VarChar(150)
-  body              String              @db.Text
+  title             String
+  body              String
   data              Json                @default("{}")
   isRead            Boolean             @default(false) @map("is_read")
-  status            String              @default("PENDING") @db.VarChar(20) // PENDING, SENT, DELIVERED, FAILED
-  externalMessageId String?             @map("external_message_id") @db.VarChar(100)
+  status            String              @default("PENDING")
+  externalMessageId String?             @map("external_message_id")
   createdAt         DateTime            @default(now()) @map("created_at")
 
   jac               Jac?                @relation(fields: [jacId], references: [id], onDelete: SetNull)

@@ -20,23 +20,13 @@ if (process.env.NODE_ENV !== "production") {
 }
 
 /**
- * Helper para ejecutar consultas aplicando el contexto de Row-Level Security (RLS) en PostgreSQL
- * Inyecta las variables de sesión 'app.current_tenant_id' y 'app.is_super_admin'
+ * Helper para ejecutar consultas aplicando contexto multi-tenant en ConectaJAC (MongoDB / Prisma)
  */
 export async function withTenantContext<T>(
-  tenantId: string | null,
-  isSuperAdmin: boolean,
+  _tenantId: string | null,
+  _isSuperAdmin: boolean,
   fn: (tx: Omit<PrismaClient, "$connect" | "$disconnect" | "$on" | "$transaction" | "$use" | "$extends">) => Promise<T>
 ): Promise<T> {
-  return prisma.$transaction(async (tx) => {
-    if (tenantId) {
-      await tx.$executeRawUnsafe(`SET LOCAL app.current_tenant_id = '${tenantId}';`);
-    } else {
-      await tx.$executeRawUnsafe(`SET LOCAL app.current_tenant_id = '';`);
-    }
-
-    await tx.$executeRawUnsafe(`SET LOCAL app.is_super_admin = '${isSuperAdmin ? "true" : "false"}';`);
-
-    return fn(tx as unknown as Omit<PrismaClient, "$connect" | "$disconnect" | "$on" | "$transaction" | "$use" | "$extends">);
-  });
+  // En MongoDB, el aislamiento se gestiona a nivel de aplicación mediante filtros por tenantId (jacId)
+  return fn(prisma as unknown as Omit<PrismaClient, "$connect" | "$disconnect" | "$on" | "$transaction" | "$use" | "$extends">);
 }

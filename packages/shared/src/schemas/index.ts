@@ -22,17 +22,20 @@ import {
   TreasuryCategory
 } from "../enums";
 
+// Helper universal para identificadores de MongoDB (ObjectId hex 24 chars) y UUID
+export const IdSchema = z.string().min(1, "Identificador requerido");
+
 // ==========================================
 // 1. AUTHENTICATION & USERS
 // ==========================================
 export const LoginSchema = z.object({
   identifier: z.string().min(3, "Correo o número de documento requerido"),
   password: z.string().min(6, "La contraseña debe tener mínimo 6 caracteres"),
-  jacId: z.string().uuid().optional() // Opcional para SUPER_ADMIN, requerido para contexto JAC
+  jacId: IdSchema.optional() // Opcional para SUPER_ADMIN, requerido para contexto JAC
 });
 
 export const RegisterCitizenSchema = z.object({
-  jacId: z.string().uuid("Debe seleccionar una JAC válida"),
+  jacId: IdSchema,
   identificationType: z.nativeEnum(IdentificationType),
   identificationNumber: z.string().min(5).max(20),
   firstName: z.string().min(2).max(100),
@@ -54,7 +57,7 @@ export const RefreshTokenSchema = z.object({
 // 2. TENANTS (JAC & ASOJUNTAS)
 // ==========================================
 export const CreateJacSchema = z.object({
-  municipalityId: z.string().uuid(),
+  municipalityId: IdSchema,
   name: z.string().min(3).max(150),
   legalPersonhoodNumber: z.string().min(2).max(50), // Número de Personería Jurídica
   nit: z.string().max(20).optional(),
@@ -98,8 +101,8 @@ export const UpdateJacSettingsSchema = z.object({
 // 3. AFFILIATES & CERTIFICATES (Libro Afiliados)
 // ==========================================
 export const AffiliationBookEntrySchema = z.object({
-  userId: z.string().uuid(),
-  jacId: z.string().uuid(),
+  userId: IdSchema,
+  jacId: IdSchema,
   bookNumber: z.number().int().positive().default(1),
   folioNumber: z.number().int().positive(),
   affiliationDate: z.string().datetime(),
@@ -112,7 +115,7 @@ export const AffiliationBookEntrySchema = z.object({
 });
 
 export const RequestCertificateSchema = z.object({
-  jacId: z.string().uuid(),
+  jacId: IdSchema,
   type: z.nativeEnum(CertificateType),
   purpose: z.string().min(5).max(300), // Ej: Trámite bancario, subsidio vivienda
   deliveryMethod: z.enum(["DIGITAL_DOWNLOAD", "PHYSICAL_COLLECTION"]).default("DIGITAL_DOWNLOAD")
@@ -126,7 +129,7 @@ export const VerifyCertificateSchema = z.object({
 // 4. TREASURY & PAYMENTS
 // ==========================================
 export const CreateFeeConfigSchema = z.object({
-  jacId: z.string().uuid(),
+  jacId: IdSchema,
   name: z.string().min(3).max(120),
   description: z.string().max(500).optional(),
   type: z.nativeEnum(FeeType),
@@ -137,22 +140,22 @@ export const CreateFeeConfigSchema = z.object({
 });
 
 export const InitPaymentTransactionSchema = z.object({
-  jacId: z.string().uuid(),
-  feeObligationId: z.string().uuid().optional(),
-  marketOrderId: z.string().uuid().optional(),
+  jacId: IdSchema,
+  feeObligationId: IdSchema.optional(),
+  marketOrderId: IdSchema.optional(),
   gateway: z.nativeEnum(PaymentGateway),
   paymentMethod: z.nativeEnum(PaymentMethod),
   amount: z.number().positive(),
   currency: z.literal("COP").default("COP"),
-  idempotencyKey: z.string().uuid(),
+  idempotencyKey: z.string().min(1),
   payerEmail: z.string().email(),
   payerPhone: z.string().min(7),
   redirectUrl: z.string().url().optional()
 });
 
 export const RecordManualPaymentSchema = z.object({
-  jacId: z.string().uuid(),
-  feeObligationId: z.string().uuid(),
+  jacId: IdSchema,
+  feeObligationId: IdSchema,
   amount: z.number().positive(),
   receiptNumber: z.string().min(1).max(50),
   paidAt: z.string().datetime(),
@@ -161,15 +164,15 @@ export const RecordManualPaymentSchema = z.object({
 });
 
 export const CreateTreasuryAccountSchema = z.object({
-  jacId: z.string().uuid(),
+  jacId: IdSchema,
   name: z.string().min(2).max(100),
   type: z.nativeEnum(TreasuryAccountType),
   initialBalance: z.number().nonnegative().default(0)
 });
 
 export const CreateTreasuryMovementSchema = z.object({
-  jacId: z.string().uuid(),
-  accountId: z.string().uuid(),
+  jacId: IdSchema,
+  accountId: IdSchema,
   type: z.nativeEnum(TreasuryTransactionType),
   category: z.nativeEnum(TreasuryCategory),
   amount: z.number().positive(),
@@ -182,7 +185,7 @@ export const CreateTreasuryMovementSchema = z.object({
 // 5. MERCADO CAMPESINO
 // ==========================================
 export const ProducerProfileSchema = z.object({
-  jacId: z.string().uuid(),
+  jacId: IdSchema,
   farmName: z.string().min(2).max(120),
   veredaName: z.string().min(2).max(100),
   bio: z.string().max(500).optional(),
@@ -193,7 +196,7 @@ export const ProducerProfileSchema = z.object({
 });
 
 export const CreateMarketProductSchema = z.object({
-  categoryId: z.string().uuid(),
+  categoryId: IdSchema,
   title: z.string().min(3).max(120),
   description: z.string().max(800),
   price: z.number().positive(),
@@ -207,9 +210,9 @@ export const CreateMarketProductSchema = z.object({
 });
 
 export const FilterMarketProductsSchema = z.object({
-  municipalityId: z.string().uuid().optional(),
-  jacId: z.string().uuid().optional(),
-  categoryId: z.string().uuid().optional(),
+  municipalityId: IdSchema.optional(),
+  jacId: IdSchema.optional(),
+  categoryId: IdSchema.optional(),
   minPrice: z.number().nonnegative().optional(),
   maxPrice: z.number().positive().optional(),
   search: z.string().optional(),
@@ -219,7 +222,7 @@ export const FilterMarketProductsSchema = z.object({
 });
 
 export const CreateMarketOrderSchema = z.object({
-  producerId: z.string().uuid(),
+  producerId: IdSchema,
   deliveryMethod: z.nativeEnum(DeliveryMethod),
   deliveryAddress: z.string().min(5).max(255).optional(),
   buyerName: z.string().min(2).max(100),
@@ -227,13 +230,13 @@ export const CreateMarketOrderSchema = z.object({
   customerNotes: z.string().max(500).optional(),
   paymentMethod: z.nativeEnum(PaymentMethod),
   items: z.array(z.object({
-    productId: z.string().uuid(),
+    productId: IdSchema,
     quantity: z.number().positive()
   })).min(1, "La orden debe contener al menos un producto")
 });
 
 export const UpdateMarketOrderStatusSchema = z.object({
-  orderId: z.string().uuid(),
+  orderId: IdSchema,
   status: z.nativeEnum(MarketOrderStatus),
   trackingNotes: z.string().max(300).optional()
 });
@@ -242,7 +245,7 @@ export const UpdateMarketOrderStatusSchema = z.object({
 // 6. NOTICIAS, COMUNICACIONES & MINGAS
 // ==========================================
 export const CreatePostSchema = z.object({
-  jacId: z.string().uuid().optional(), // Requerido si scope es JAC_LOCAL; nulo si ASOJUNTAS municipal
+  jacId: IdSchema.optional(), // Requerido si scope es JAC_LOCAL; nulo si ASOJUNTAS municipal
   scope: z.nativeEnum(PostScope),
   type: z.nativeEnum(PostType),
   priority: z.nativeEnum(PostPriority).default(PostPriority.NORMAL),
@@ -258,7 +261,7 @@ export const CreatePostSchema = z.object({
 });
 
 export const MingaAttendanceSchema = z.object({
-  postId: z.string().uuid(),
+  postId: IdSchema,
   attending: z.boolean(),
   notes: z.string().max(250).optional()
 });
@@ -267,7 +270,7 @@ export const MingaAttendanceSchema = z.object({
 // 7. PARTICIPACIÓN (PQRSD & ASAMBLEAS)
 // ==========================================
 export const CreatePqrsdSchema = z.object({
-  jacId: z.string().uuid(),
+  jacId: IdSchema,
   type: z.nativeEnum(PqrsdType),
   subject: z.string().min(5).max(150),
   description: z.string().min(10).max(2000),
@@ -276,14 +279,14 @@ export const CreatePqrsdSchema = z.object({
 });
 
 export const RespondPqrsdSchema = z.object({
-  ticketId: z.string().uuid(),
+  ticketId: IdSchema,
   status: z.nativeEnum(PqrsdStatus),
   responseText: z.string().min(10).max(3000),
   notifyViaWhatsApp: z.boolean().default(true)
 });
 
 export const CreateAssemblySchema = z.object({
-  jacId: z.string().uuid(),
+  jacId: IdSchema,
   title: z.string().min(5).max(180),
   description: z.string().max(1000).optional(),
   type: z.nativeEnum(AssemblyType),
@@ -293,8 +296,8 @@ export const CreateAssemblySchema = z.object({
 });
 
 export const CastAssemblyVoteSchema = z.object({
-  assemblyId: z.string().uuid(),
-  topicId: z.string().uuid(),
-  selectedOptionId: z.string().uuid(),
+  assemblyId: IdSchema,
+  topicId: IdSchema,
+  selectedOptionId: IdSchema,
   voteSignature: z.string().min(10) // HMAC/Sign digital para garantizar no repudio y anonimato
 });
