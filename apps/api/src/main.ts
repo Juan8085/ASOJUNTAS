@@ -18,7 +18,10 @@ async function bootstrap() {
 
   // Habilitar CORS para Web Admin y App Móvil (soporta localhost, IPs locales 192.168.x.x y producción)
   app.enableCors({
-    origin: (origin, callback) => {
+    origin: (
+      _origin: string | undefined,
+      callback: (err: Error | null, allow: boolean) => void
+    ) => {
       // Reflejar el origen entrante para permitir localhost, IPs de red local y dominios móviles
       callback(null, true);
     },

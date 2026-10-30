@@ -1,8 +1,8 @@
-import { PrismaClient } from "./client";
+import { PrismaClient } from "./client/index.js";
 
 declare const process: any;
 
-export * from "./client";
+export * from "./client/index.js";
 
 declare global {
   // eslint-disable-next-line no-var
