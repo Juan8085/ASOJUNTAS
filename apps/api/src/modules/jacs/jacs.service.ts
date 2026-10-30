@@ -258,5 +258,59 @@ export class JacsService {
       },
     });
   }
+
+  /**
+   * Listar todos los municipios registrados
+   */
+  async listMunicipalities() {
+    return this.prisma.municipality.findMany({
+      orderBy: { name: "asc" },
+      include: {
+        _count: {
+          select: { jacs: true },
+        },
+      },
+    });
+  }
+
+  /**
+   * Métricas y censo comunal consolidado para Asojuntas (Super Admin)
+   */
+  async getAsojuntasOverview(municipalityId?: string) {
+    const jacWhere: Record<string, unknown> = {};
+    if (municipalityId) {
+      jacWhere.municipalityId = municipalityId;
+    }
+
+    const [totalJacs, activeJacs, totalAffiliates, totalCertificates, totalPosts] = await Promise.all([
+      this.prisma.jac.count({ where: jacWhere }),
+      this.prisma.jac.count({ where: { ...jacWhere, isActive: true } }),
+      this.prisma.jacMembership.count({
+        where: {
+          status: MembershipStatus.ACTIVE,
+          ...(municipalityId && { jac: { municipalityId } }),
+        },
+      }),
+      this.prisma.certificate.count({
+        where: {
+          ...(municipalityId && { jac: { municipalityId } }),
+        },
+      }),
+      this.prisma.post.count({
+        where: {
+          ...(municipalityId && { jac: { municipalityId } }),
+        },
+      }),
+    ]);
+
+    return {
+      totalJacs,
+      activeJacs,
+      inactiveJacs: totalJacs - activeJacs,
+      totalAffiliates,
+      totalCertificates,
+      totalPosts,
+    };
+  }
 }
 

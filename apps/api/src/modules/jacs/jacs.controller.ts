@@ -72,6 +72,29 @@ export class JacsController {
   }
 
   @Public()
+  @Get("municipalities")
+  @ApiOperation({
+    summary: "Listar Municipios de cobertura",
+    description: "Retorna los municipios disponibles con su departamento y conteo de JACs",
+  })
+  async listMunicipalities() {
+    return this.jacsService.listMunicipalities();
+  }
+
+  @Get("overview/asojuntas")
+  @ApiBearerAuth()
+  @Roles(UserRole.SUPER_ADMIN)
+  @UseGuards(RolesGuard)
+  @ApiOperation({
+    summary: "Censo y métricas consolidadas de Asojuntas (Super Admin)",
+    description: "Retorna el total de JACs activas, censo total de afiliados, certificados emitidos y circulares",
+  })
+  @ApiQuery({ name: "municipalityId", required: false, type: String })
+  async getAsojuntasOverview(@Query("municipalityId") municipalityId?: string) {
+    return this.jacsService.getAsojuntasOverview(municipalityId);
+  }
+
+  @Public()
   @Get(":id")
   @ApiOperation({
     summary: "Obtener detalle institucional de una JAC",

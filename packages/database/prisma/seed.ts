@@ -242,6 +242,27 @@ async function main() {
   // 5. LIBRO DIGITAL DE AFILIADOS (Ley 2166 de 2021)
   console.log("📖 Asentando Libro Digital de Afiliados...");
 
+  // Folio #0 / Super Admin Asojuntas
+  await prisma.jacMembership.upsert({
+    where: {
+      jacId_userId: { jacId: jacElSalado.id, userId: superAdmin.id },
+    },
+    update: { role: UserRole.SUPER_ADMIN },
+    create: {
+      jacId: jacElSalado.id,
+      userId: superAdmin.id,
+      role: UserRole.SUPER_ADMIN,
+      status: MembershipStatus.ACTIVE,
+      bookNumber: 1,
+      folioNumber: 999,
+      address: "Sede Asojuntas San Vicente",
+      veredaOrBarrio: "Centro",
+      occupation: "Presidente Asojuntas Municipal",
+      hasLandOrFarm: false,
+      observations: "Super Administrador Asojuntas San Vicente de Chucurí",
+    },
+  });
+
   // Folio #1: Presidente
   await prisma.jacMembership.upsert({
     where: {

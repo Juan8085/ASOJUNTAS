@@ -154,6 +154,27 @@ export default function DashboardLayout({
               </Link>
             );
           })}
+
+          {/* Super Admin / Asojuntas section */}
+          {isSuperAdmin && (
+            <div className="pt-4 mt-4 border-t border-slate-800">
+              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider px-3 mb-2 block">
+                Nivel Municipal (Asojuntas)
+              </span>
+              <Link
+                href="/dashboard/asojuntas"
+                onClick={() => setIsSidebarOpen(false)}
+                className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition ${
+                  pathname.startsWith("/dashboard/asojuntas")
+                    ? "bg-blue-600 text-white shadow-md shadow-blue-600/20 font-semibold"
+                    : "text-blue-300 hover:bg-slate-800/70 hover:text-white"
+                }`}
+              >
+                <Building className="w-4 h-4 text-blue-400" />
+                Asojuntas Municipal
+              </Link>
+            </div>
+          )}
         </nav>
 
         {/* User profile & logout footer */}
