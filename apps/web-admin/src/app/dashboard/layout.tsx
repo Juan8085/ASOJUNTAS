@@ -21,8 +21,8 @@ import {
   X,
 } from "lucide-react";
 
-const navigationItems = [
-  { name: "Resumen", href: "/dashboard", icon: LayoutDashboard },
+const jacNavItems = [
+  { name: "Resumen Veredal", href: "/dashboard", icon: LayoutDashboard },
   { name: "Libro de Afiliados", href: "/dashboard/affiliates", icon: Users },
   { name: "Certificados con QR", href: "/dashboard/certificates", icon: FileCheck },
   { name: "Tesorería & Cuotas", href: "/dashboard/treasury", icon: Landmark },
@@ -31,6 +31,18 @@ const navigationItems = [
   { name: "Cartelera & Alertas", href: "/dashboard/posts", icon: Megaphone },
   { name: "PQRSD Comunal", href: "/dashboard/pqrsd", icon: Inbox },
   { name: "Configuración JAC", href: "/dashboard/settings", icon: Settings },
+];
+
+const asojuntasNavItems = [
+  { name: "Panel Municipal Asojuntas", href: "/dashboard/asojuntas", icon: Building },
+  { name: "Censo Comunal de Afiliados", href: "/dashboard/affiliates", icon: Users },
+  { name: "Certificados Oficiales & QR", href: "/dashboard/certificates", icon: FileCheck },
+  { name: "Tesorería Comunal", href: "/dashboard/treasury", icon: Landmark },
+  { name: "Asambleas Municipales", href: "/dashboard/assemblies", icon: Vote },
+  { name: "Mingas y Proyectos", href: "/dashboard/mingas", icon: Shovel },
+  { name: "Circulares & Comunicados", href: "/dashboard/posts", icon: Megaphone },
+  { name: "PQRSD Municipal", href: "/dashboard/pqrsd", icon: Inbox },
+  { name: "Configuración Asojuntas", href: "/dashboard/settings", icon: Settings },
 ];
 
 export default function DashboardLayout({
@@ -83,16 +95,32 @@ export default function DashboardLayout({
       >
         {/* Brand */}
         <div className="h-16 px-6 flex items-center justify-between border-b border-slate-800">
-          <Link href="/dashboard" className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-emerald-500 flex items-center justify-center font-bold text-white shadow-md shadow-emerald-500/20">
-              CJ
+          <Link
+            href={isSuperAdmin ? "/dashboard/asojuntas" : "/dashboard"}
+            className="flex items-center gap-3"
+          >
+            <div
+              className={`w-9 h-9 rounded-xl flex items-center justify-center font-bold text-white shadow-md ${
+                isSuperAdmin
+                  ? "bg-blue-600 shadow-blue-600/30"
+                  : "bg-emerald-500 shadow-emerald-500/20"
+              }`}
+            >
+              {isSuperAdmin ? "AJ" : "CJ"}
             </div>
             <div>
               <span className="font-bold text-lg text-white tracking-tight">
-                Conecta<span className="text-emerald-400">JAC</span>
+                Conecta
+                <span className={isSuperAdmin ? "text-blue-400" : "text-emerald-400"}>
+                  {isSuperAdmin ? "Asojuntas" : "JAC"}
+                </span>
               </span>
-              <span className="text-[10px] text-slate-400 block -mt-1 font-semibold uppercase tracking-wider">
-                Directivos
+              <span
+                className={`text-[10px] block -mt-1 font-semibold uppercase tracking-wider ${
+                  isSuperAdmin ? "text-blue-300" : "text-emerald-400"
+                }`}
+              >
+                {isSuperAdmin ? "Federación Municipal" : "Directivos JAC"}
               </span>
             </div>
           </Link>
@@ -107,13 +135,17 @@ export default function DashboardLayout({
         {/* JAC Context Selector */}
         <div className="p-4 border-b border-slate-800/60">
           <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1.5">
-            Contexto Activo de JAC
+            {isSuperAdmin ? "JAC en Supervisión / Auditoría" : "Contexto Activo de JAC"}
           </label>
           <div className="relative">
             <select
               value={currentJacId || ""}
               onChange={(e) => switchJac(e.target.value)}
-              className="w-full bg-slate-800/90 hover:bg-slate-800 border border-slate-700/80 rounded-xl py-2 px-3 text-xs font-semibold text-emerald-300 focus:outline-none focus:ring-1 focus:ring-emerald-500 appearance-none pr-8 cursor-pointer transition"
+              className={`w-full bg-slate-800/90 hover:bg-slate-800 border border-slate-700/80 rounded-xl py-2 px-3 text-xs font-semibold focus:outline-none appearance-none pr-8 cursor-pointer transition ${
+                isSuperAdmin
+                  ? "text-blue-300 focus:ring-1 focus:ring-blue-500"
+                  : "text-emerald-300 focus:ring-1 focus:ring-emerald-500"
+              }`}
             >
               {memberships.map((m) => (
                 <option key={m.id} value={m.jacId}>
@@ -124,19 +156,27 @@ export default function DashboardLayout({
             <ChevronDown className="w-4 h-4 text-slate-400 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
           </div>
           <div className="mt-2 flex items-center justify-between text-[11px] text-slate-400">
-            <span>Rol:</span>
-            <span className="px-2 py-0.5 rounded-full bg-emerald-950/80 text-emerald-300 font-semibold border border-emerald-800/40">
-              {activeMembership?.role || (isSuperAdmin ? "SUPER_ADMIN" : "DIRECTIVO")}
+            <span>Rol Activo:</span>
+            <span
+              className={`px-2 py-0.5 rounded-full font-semibold border ${
+                isSuperAdmin
+                  ? "bg-blue-950/80 text-blue-300 border-blue-800/50"
+                  : "bg-emerald-950/80 text-emerald-300 border-emerald-800/40"
+              }`}
+            >
+              {isSuperAdmin ? "SUPER_ADMIN (Asojuntas)" : activeMembership?.role || "DIRECTIVO"}
             </span>
           </div>
         </div>
 
         {/* Navigation */}
         <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
-          {navigationItems.map((item) => {
+          {(isSuperAdmin ? asojuntasNavItems : jacNavItems).map((item) => {
             const isActive =
               pathname === item.href ||
-              (item.href !== "/dashboard" && pathname.startsWith(item.href));
+              (item.href !== "/dashboard" &&
+                item.href !== "/dashboard/asojuntas" &&
+                pathname.startsWith(item.href));
             const Icon = item.icon;
             return (
               <Link
@@ -145,7 +185,9 @@ export default function DashboardLayout({
                 onClick={() => setIsSidebarOpen(false)}
                 className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition ${
                   isActive
-                    ? "bg-emerald-600 text-white shadow-md shadow-emerald-600/20 font-semibold"
+                    ? isSuperAdmin
+                      ? "bg-blue-600 text-white shadow-md shadow-blue-600/30 font-semibold"
+                      : "bg-emerald-600 text-white shadow-md shadow-emerald-600/20 font-semibold"
                     : "text-slate-300 hover:bg-slate-800/70 hover:text-white"
                 }`}
               >
@@ -154,27 +196,6 @@ export default function DashboardLayout({
               </Link>
             );
           })}
-
-          {/* Super Admin / Asojuntas section */}
-          {isSuperAdmin && (
-            <div className="pt-4 mt-4 border-t border-slate-800">
-              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider px-3 mb-2 block">
-                Nivel Municipal (Asojuntas)
-              </span>
-              <Link
-                href="/dashboard/asojuntas"
-                onClick={() => setIsSidebarOpen(false)}
-                className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition ${
-                  pathname.startsWith("/dashboard/asojuntas")
-                    ? "bg-blue-600 text-white shadow-md shadow-blue-600/20 font-semibold"
-                    : "text-blue-300 hover:bg-slate-800/70 hover:text-white"
-                }`}
-              >
-                <Building className="w-4 h-4 text-blue-400" />
-                Asojuntas Municipal
-              </Link>
-            </div>
-          )}
         </nav>
 
         {/* User profile & logout footer */}
@@ -218,21 +239,35 @@ export default function DashboardLayout({
               <Menu className="w-6 h-6" />
             </button>
             <div className="hidden sm:flex items-center gap-2 text-slate-500 text-xs">
-              <Building className="w-4 h-4 text-emerald-600" />
+              <Building
+                className={`w-4 h-4 ${isSuperAdmin ? "text-blue-600" : "text-emerald-600"}`}
+              />
               <span className="font-semibold text-slate-800">
-                {activeMembership?.jacName || "Junta de Acción Comunal"}
+                {isSuperAdmin
+                  ? "Asojuntas Municipal • Nivel Central"
+                  : activeMembership?.jacName || "Junta de Acción Comunal"}
               </span>
               <span>•</span>
-              <span>Libro #{activeMembership?.bookNumber || 1}</span>
+              <span>
+                {isSuperAdmin
+                  ? `JAC Activa: ${activeMembership?.jacName || "Consolidado"}`
+                  : `Libro Digital #${activeMembership?.bookNumber || 1}`}
+              </span>
             </div>
           </div>
 
           <div className="flex items-center gap-3">
             <span className="hidden md:inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-slate-100 text-slate-700 text-xs font-medium border border-slate-200">
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-              Conectado a PostgreSQL RLS
+              MongoDB Atlas Cloud (En Línea)
             </span>
-            <div className="w-8 h-8 rounded-full bg-emerald-100 text-emerald-800 flex items-center justify-center font-bold text-xs border border-emerald-200">
+            <div
+              className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs border ${
+                isSuperAdmin
+                  ? "bg-blue-100 text-blue-800 border-blue-200"
+                  : "bg-emerald-100 text-emerald-800 border-emerald-200"
+              }`}
+            >
               {user.firstName[0]}
             </div>
           </div>

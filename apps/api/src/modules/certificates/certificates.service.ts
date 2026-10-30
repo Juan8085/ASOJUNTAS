@@ -21,11 +21,16 @@ export class CertificatesService {
   /**
    * Expedición formal de certificado comunal con código verificable y QR
    */
-  async requestCertificate(userId: string, input: RequestCertificateInput) {
-    // 1. Validar que el usuario esté afiliado y activo en la JAC
+  async requestCertificate(
+    callerUserId: string,
+    input: RequestCertificateInput & { targetUserId?: string; citizenId?: string }
+  ) {
+    const targetUserId = input.targetUserId || input.citizenId || callerUserId;
+
+    // 1. Validar que el habitante objetivo esté afiliado y activo en la JAC
     const membership = await this.prisma.jacMembership.findFirst({
       where: {
-        userId,
+        userId: targetUserId,
         jacId: input.jacId,
       },
       include: {
@@ -42,7 +47,7 @@ export class CertificatesService {
     if (input.type === CertificateType.GOOD_STANDING) {
       const pendingObligations = await this.prisma.userFeeObligation.count({
         where: {
-          userId,
+          userId: targetUserId,
           jacId: input.jacId,
           status: {
             in: [ObligationStatus.PENDING, ObligationStatus.OVERDUE],
@@ -64,14 +69,18 @@ export class CertificatesService {
     // 4. Token criptográfico de seguridad anti-falsificación
     const qrSecurityToken = crypto
       .createHash("sha256")
-      .update(`${verificationCode}:${userId}:${input.jacId}:${Date.now()}`)
+      .update(`${verificationCode}:${targetUserId}:${input.jacId}:${Date.now()}`)
       .digest("hex");
 
     // 5. Configurar vigencia legal estándar (90 días calendario)
     const issuedAt = new Date();
     const validUntil = new Date(issuedAt.getTime() + 90 * 24 * 60 * 60 * 1000);
 
-    // 6. Snapshot de metadatos institucionales congelados al momento de expedición
+    // 6. URL directa de verificación pública navegable
+    const frontendBaseUrl = process.env.FRONTEND_URL || "http://localhost:3000";
+    const verificationUrl = `${frontendBaseUrl}/verify/${verificationCode}`;
+
+    // 7. Snapshot de metadatos institucionales congelados al momento de expedición
     const metadata = {
       jacName: membership.jac.name,
       legalPersonhoodNumber: membership.jac.legalPersonhoodNumber,
@@ -88,26 +97,22 @@ export class CertificatesService {
       type: input.type,
       issuedAt: issuedAt.toISOString(),
       validUntil: validUntil.toISOString(),
+      verificationUrl,
     };
 
-    // 7. Generar código QR en Base64 para visualización e impresión
-    const qrPayload = JSON.stringify({
-      code: verificationCode,
-      token: qrSecurityToken.slice(0, 32),
-      url: `https://conectajac.gov.co/verify/${verificationCode}`,
-    });
-    const qrCodeDataUrl = await QRCode.toDataURL(qrPayload, {
+    // 8. Generar código QR apuntando directamente a la URL de verificación pública
+    const qrCodeDataUrl = await QRCode.toDataURL(verificationUrl, {
       errorCorrectionLevel: "H",
       margin: 2,
-      width: 256,
+      width: 300,
     });
 
-    // 8. Guardar en base de datos
+    // 9. Guardar en base de datos
     const certificate = await this.prisma.certificate.create({
       data: {
         jacId: input.jacId,
-        userId,
-        issuedByUserId: userId, // Auto-solicitado o expedido por directivo
+        userId: targetUserId,
+        issuedByUserId: callerUserId,
         type: input.type,
         status: CertificateStatus.VALID,
         verificationCode,
@@ -124,6 +129,7 @@ export class CertificatesService {
       certificate: {
         id: certificate.id,
         verificationCode: certificate.verificationCode,
+        verificationUrl,
         type: certificate.type,
         status: certificate.status,
         issuedAt: certificate.issuedAt,
@@ -171,10 +177,20 @@ export class CertificatesService {
       computedStatus = CertificateStatus.EXPIRED;
     }
 
+    const frontendBaseUrl = process.env.FRONTEND_URL || "http://localhost:3000";
+    const verificationUrl = `${frontendBaseUrl}/verify/${certificate.verificationCode}`;
+    const qrCodeDataUrl = await QRCode.toDataURL(verificationUrl, {
+      errorCorrectionLevel: "H",
+      margin: 2,
+      width: 260,
+    });
+
     return {
       isValid: computedStatus === CertificateStatus.VALID,
       status: computedStatus,
       verificationCode: certificate.verificationCode,
+      verificationUrl,
+      qrCodeDataUrl,
       issuedAt: certificate.issuedAt,
       validUntil: certificate.validUntil,
       metadata: certificate.metadata,

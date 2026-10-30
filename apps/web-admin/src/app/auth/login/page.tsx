@@ -57,7 +57,15 @@ export default function LoginPage() {
         currentJacId: resData.currentJacId,
       });
 
-      router.push("/dashboard");
+      const hasSuperAdmin =
+        resData.memberships?.some((m: any) => m.role === "SUPER_ADMIN") ||
+        resData.user?.role === "SUPER_ADMIN";
+
+      if (hasSuperAdmin) {
+        router.push("/dashboard/asojuntas");
+      } else {
+        router.push("/dashboard");
+      }
     } catch (err) {
       setErrorMessage((err as Error).message);
     } finally {

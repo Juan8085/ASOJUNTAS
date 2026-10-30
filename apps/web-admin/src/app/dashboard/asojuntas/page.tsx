@@ -33,6 +33,8 @@ interface JacItem {
   codeRup?: string;
   phone?: string;
   email?: string;
+  latitude?: number;
+  longitude?: number;
   logoUrl?: string;
   primaryColor?: string;
   isActive: boolean;
@@ -435,8 +437,19 @@ export default function AsojuntasDashboardPage() {
 
                     <td className="py-3.5 px-4">
                       <div className="flex items-center gap-1.5 font-medium text-slate-800">
-                        <MapPin className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                        <MapPin className="w-3.5 h-3.5 text-blue-600 shrink-0" />
                         <span>Vereda {jac.veredaOrBarrio}</span>
+                        {jac.latitude && jac.longitude && (
+                          <a
+                            href={`https://www.google.com/maps?q=${jac.latitude},${jac.longitude}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-[10px] text-blue-600 hover:text-blue-800 font-semibold underline ml-1"
+                            title="Ver en Google Maps"
+                          >
+                            GPS ↗
+                          </a>
+                        )}
                       </div>
                       <span className="text-[10px] text-slate-400 block ml-5">
                         {jac.municipality?.name}, {jac.municipality?.department}

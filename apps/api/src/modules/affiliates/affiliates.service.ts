@@ -24,6 +24,8 @@ interface ManualEnrollInput {
   occupation?: string;
   hasLandOrFarm?: boolean;
   farmName?: string;
+  latitude?: number;
+  longitude?: number;
   observations?: string;
   role?: UserRole;
 }
@@ -106,6 +108,8 @@ export class AffiliatesService {
         occupation: item.occupation,
         hasLandOrFarm: item.hasLandOrFarm,
         farmName: item.farmName,
+        latitude: item.latitude,
+        longitude: item.longitude,
         observations: item.observations,
       })),
       pagination: {
@@ -206,6 +210,8 @@ export class AffiliatesService {
             email: input.email ? input.email.toLowerCase().trim() : null,
             phone: input.phone.trim(),
             passwordHash,
+            latitude: input.latitude,
+            longitude: input.longitude,
             isActive: true,
           },
         });
@@ -225,6 +231,8 @@ export class AffiliatesService {
           occupation: input.occupation?.trim() || null,
           hasLandOrFarm: input.hasLandOrFarm ?? false,
           farmName: input.farmName?.trim() || null,
+          latitude: input.latitude,
+          longitude: input.longitude,
           observations: input.observations?.trim() || null,
         },
       });

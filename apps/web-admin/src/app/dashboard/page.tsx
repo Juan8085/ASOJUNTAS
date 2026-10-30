@@ -1,5 +1,7 @@
 "use client";
 
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { apiClient } from "@/lib/api-client";
@@ -40,7 +42,14 @@ interface AssemblyItem {
 }
 
 export default function DashboardOverviewPage() {
-  const { currentJacId, user } = useAuthStore();
+  const router = useRouter();
+  const { currentJacId, user, isSuperAdmin } = useAuthStore();
+
+  useEffect(() => {
+    if (isSuperAdmin) {
+      router.replace("/dashboard/asojuntas");
+    }
+  }, [isSuperAdmin, router]);
 
   const { data: treasurySummary, isLoading: isLoadingTreasury } = useQuery<FinancialSummary>({
     queryKey: ["treasury-summary", currentJacId],

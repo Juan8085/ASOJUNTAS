@@ -5,6 +5,7 @@ datasource db {
 
 generator client {
   provider = "prisma-client-js"
+  output   = "../src/client"
 }
 
 // =========================================================================
@@ -312,6 +313,8 @@ model User {
   gender               String?
   avatarUrl            String?               @map("avatar_url")
   passwordHash         String                @map("password_hash")
+  latitude             Float?
+  longitude            Float?
   isEmailVerified      Boolean               @default(false) @map("is_email_verified")
   isPhoneVerified      Boolean               @default(false) @map("is_phone_verified")
   isActive             Boolean               @default(true) @map("is_active")
@@ -358,6 +361,8 @@ model JacMembership {
   occupation           String?
   hasLandOrFarm        Boolean          @default(false) @map("has_land_or_farm")
   farmName             String?          @map("farm_name")
+  latitude             Float?
+  longitude            Float?
   observations         String?
   
   createdAt            DateTime         @default(now()) @map("created_at")

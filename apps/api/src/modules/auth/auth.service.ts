@@ -341,16 +341,16 @@ export class AuthService {
    * Emisión de par de tokens (Access 15m + Refresh 7d)
    */
   private async generateTokens(payload: UserJwtPayload) {
-    const accessToken = await this.jwtService.signAsync(payload, {
+    const accessToken = await this.jwtService.signAsync(payload as any, {
       secret: this.jwtSecret,
-      expiresIn: "15m",
+      expiresIn: "15m" as any,
     });
 
     const refreshToken = await this.jwtService.signAsync(
-      { sub: payload.sub, tokenType: "refresh" },
+      { sub: payload.sub, tokenType: "refresh" } as any,
       {
         secret: this.refreshSecret,
-        expiresIn: "7d",
+        expiresIn: "7d" as any,
       }
     );
 

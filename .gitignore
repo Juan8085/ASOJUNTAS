@@ -49,3 +49,5 @@ Thumbs.db
 *.sqlite
 *.sqlite3
 *.db
+*.node
+packages/database/src/client

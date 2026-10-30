@@ -111,11 +111,15 @@ export const AffiliationBookEntrySchema = z.object({
   occupation: z.string().max(100).optional(),
   hasLandOrFarm: z.boolean().default(false),
   farmName: z.string().max(120).optional(),
+  latitude: z.number().optional(),
+  longitude: z.number().optional(),
   observations: z.string().max(500).optional()
 });
 
 export const RequestCertificateSchema = z.object({
   jacId: IdSchema,
+  targetUserId: IdSchema.optional(),
+  citizenId: IdSchema.optional(),
   type: z.nativeEnum(CertificateType),
   purpose: z.string().min(5).max(300), // Ej: Trámite bancario, subsidio vivienda
   deliveryMethod: z.enum(["DIGITAL_DOWNLOAD", "PHYSICAL_COLLECTION"]).default("DIGITAL_DOWNLOAD")

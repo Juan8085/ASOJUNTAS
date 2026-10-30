@@ -72,8 +72,29 @@ export default function CertificatesPage() {
 
   // Issue state
   const [certType, setCertType] = useState<CertificateType>(CertificateType.RESIDENCE);
+  const [selectedAffiliateId, setSelectedAffiliateId] = useState("");
   const [purpose, setPurpose] = useState("");
   const [issuedCert, setIssuedCert] = useState<CertificateResponse["certificate"] | null>(null);
+
+  // List of affiliates in current JAC to issue certificates to
+  const { data: affiliatesData } = useQuery<{
+    data: Array<{
+      membershipId: string;
+      folioNumber: number;
+      veredaOrBarrio: string;
+      user: {
+        id: string;
+        firstName: string;
+        lastName: string;
+        identificationType: string;
+        identificationNumber: string;
+      };
+    }>;
+  }>({
+    queryKey: ["affiliates-for-certs", currentJacId],
+    queryFn: () => apiClient("/affiliates/book", { params: { limit: 100 } }),
+    enabled: Boolean(currentJacId),
+  });
 
   // Verification state
   const [verifyCode, setVerifyCode] = useState("");
@@ -86,12 +107,13 @@ export default function CertificatesPage() {
         method: "POST",
         body: JSON.stringify({
           jacId: currentJacId,
+          targetUserId: selectedAffiliateId || undefined,
           type: certType,
           purpose: purpose.trim(),
           deliveryMethod: "DIGITAL_DOWNLOAD",
         }),
       }),
-    onSuccess: (data) => {
+    onSuccess: (data: CertificateResponse) => {
       setIssuedCert(data.certificate);
       setPurpose("");
     },
@@ -188,6 +210,27 @@ export default function CertificatesPage() {
               }}
               className="space-y-4"
             >
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1.5">
+                  Habitante o Afiliado Titular *
+                </label>
+                <select
+                  value={selectedAffiliateId}
+                  onChange={(e) => setSelectedAffiliateId(e.target.value)}
+                  className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 bg-white"
+                >
+                  <option value="">👤 Mi usuario directivo actual</option>
+                  {affiliatesData?.data?.map((item) => (
+                    <option key={item.user.id} value={item.user.id}>
+                      Folio #{item.folioNumber} - {item.user.firstName} {item.user.lastName} ({item.user.identificationType} {item.user.identificationNumber} - {item.veredaOrBarrio})
+                    </option>
+                  ))}
+                </select>
+                <p className="text-[11px] text-slate-400 mt-1">
+                  Seleccione el miembro de la comunidad para quien se emitirá la constancia oficial.
+                </p>
+              </div>
+
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1.5">
                   Tipo de Certificado *
@@ -290,31 +333,63 @@ export default function CertificatesPage() {
                 </div>
 
                 {/* QR Section */}
-                <div className="flex items-center justify-between pt-2">
-                  <div className="space-y-1">
-                    <p className="text-[11px] font-bold text-slate-700">
-                      Verificación en tiempo real
+                <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-2 bg-emerald-50/50 p-4 rounded-2xl border border-emerald-100">
+                  <div className="space-y-1 text-center sm:text-left">
+                    <p className="text-xs font-bold text-slate-800 flex items-center justify-center sm:justify-start gap-1.5">
+                      <ShieldCheck className="w-4 h-4 text-emerald-600" />
+                      Verificación Digital en Tiempo Real
                     </p>
-                    <p className="text-[10px] text-slate-400">
-                      Escanee este código para verificar autenticidad directa en el sistema municipal.
+                    <p className="text-[11px] text-slate-500 max-w-xs">
+                      Escanee el código QR con cualquier smartphone o haga clic en el botón de verificación para abrir el registro oficial.
                     </p>
-                    <p className="text-[10px] font-semibold text-emerald-700">
+                    <p className="text-[11px] font-semibold text-emerald-700">
                       Válido hasta: {new Date(issuedCert.validUntil).toLocaleDateString("es-CO")}
                     </p>
                   </div>
-                  <img
-                    src={issuedCert.qrCodeDataUrl}
-                    alt="Código QR de Verificación"
-                    className="w-24 h-24 rounded-xl border p-1 bg-white shadow-sm"
-                  />
+                  <div className="flex flex-col items-center gap-1.5">
+                    <a
+                      href={`/verify/${issuedCert.verificationCode}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      title="Clic para verificar directamente este certificado"
+                      className="group relative block"
+                    >
+                      <img
+                        src={issuedCert.qrCodeDataUrl}
+                        alt="Código QR de Verificación"
+                        className="w-28 h-28 rounded-xl border border-emerald-300 p-1.5 bg-white shadow-md group-hover:scale-105 transition"
+                      />
+                      <span className="absolute inset-0 bg-emerald-900/10 rounded-xl opacity-0 group-hover:opacity-100 flex items-center justify-center text-[10px] font-bold text-emerald-950 transition">
+                        Abrir ↗
+                      </span>
+                    </a>
+                    <span className="text-[9px] font-mono text-slate-400">
+                      {issuedCert.verificationCode}
+                    </span>
+                  </div>
                 </div>
 
-                <div className="pt-4 border-t flex items-center justify-end gap-2 print:hidden">
+                <div className="pt-4 border-t flex flex-wrap items-center justify-end gap-2 print:hidden">
+                  <a
+                    href={`/verify/${issuedCert.verificationCode}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="px-3.5 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition"
+                  >
+                    <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" /> Probar Validación QR ↗
+                  </a>
+                  <a
+                    href={issuedCert.qrCodeDataUrl}
+                    download={`QR-${issuedCert.verificationCode}.png`}
+                    className="px-3.5 py-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition shadow-sm"
+                  >
+                    <Download className="w-3.5 h-3.5" /> Descargar QR
+                  </a>
                   <button
                     onClick={() => window.print()}
-                    className="px-4 py-2 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-xs font-semibold flex items-center gap-1.5 transition"
+                    className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-semibold flex items-center gap-1.5 transition shadow-sm"
                   >
-                    <Printer className="w-3.5 h-3.5" /> Imprimir
+                    <Printer className="w-3.5 h-3.5" /> Imprimir Certificado
                   </button>
                 </div>
               </div>

@@ -129,6 +129,8 @@ export class AffiliatesController {
       occupation?: string;
       hasLandOrFarm?: boolean;
       farmName?: string;
+      latitude?: number;
+      longitude?: number;
       observations?: string;
       role?: UserRole;
     }
