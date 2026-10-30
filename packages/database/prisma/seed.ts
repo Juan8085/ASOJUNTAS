@@ -22,9 +22,9 @@ import {
 
 const prisma = new PrismaClient();
 
-// Hash bcrypt de 'Password123!' (cost 10)
+// Hash bcrypt válido de 'Password123!' (cost 10)
 const DEFAULT_PASSWORD_HASH =
-  "$2b$10$EixZaYVK1fsbw1ZfbX3OXePaWxn96p36WQoeG6Lruj3vjPGga31lW";
+  "$2b$10$pwZI94G7aMtGxQdOusoD6.1CuYtD2VZfbkNR4AxbvcnSfqgueSlsu";
 
 async function main() {
   console.log("🌱 Iniciando siembra de datos para ConectaJAC (Colombia)...");
