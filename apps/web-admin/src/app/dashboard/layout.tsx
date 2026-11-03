@@ -65,6 +65,22 @@ export default function DashboardLayout({
     }
   }, [user, router]);
 
+  const { data: allJacs } = useQuery<
+    Array<{ id: string; name: string; veredaOrBarrio: string }>
+  >({
+    queryKey: ["all-jacs-for-superadmin"],
+    queryFn: () => apiClient("/jacs"),
+    enabled: Boolean(mounted && user && isSuperAdmin),
+  });
+
+  const activeJacFromAll = allJacs?.find((j) => j.id === currentJacId);
+  const activeMembership =
+    memberships.find((m) => m.jacId === currentJacId) || memberships[0];
+
+  const activeJacDisplayName = isSuperAdmin
+    ? activeJacFromAll?.name || (currentJacId ? activeMembership?.jacName || "JAC en Supervisión" : "Todas las JACs (Consolidado Municipal)")
+    : activeMembership?.jacName || "Junta de Acción Comunal";
+
   if (!mounted || !user) {
     return (
       <div className="min-h-screen bg-slate-900 flex items-center justify-center text-white">
@@ -75,22 +91,6 @@ export default function DashboardLayout({
       </div>
     );
   }
-
-  const { data: allJacs } = useQuery<
-    Array<{ id: string; name: string; veredaOrBarrio: string }>
-  >({
-    queryKey: ["all-jacs-for-superadmin"],
-    queryFn: () => apiClient("/jacs"),
-    enabled: isSuperAdmin,
-  });
-
-  const activeJacFromAll = allJacs?.find((j) => j.id === currentJacId);
-  const activeMembership =
-    memberships.find((m) => m.jacId === currentJacId) || memberships[0];
-
-  const activeJacDisplayName = isSuperAdmin
-    ? activeJacFromAll?.name || (currentJacId ? activeMembership?.jacName || "JAC en Supervisión" : "Todas las JACs (Consolidado Municipal)")
-    : activeMembership?.jacName || "Junta de Acción Comunal";
 
   return (
     <div className="min-h-screen bg-slate-50 flex">
