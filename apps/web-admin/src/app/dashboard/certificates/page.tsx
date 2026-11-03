@@ -117,6 +117,18 @@ export default function CertificatesPage() {
   const { currentJacId, isSuperAdmin } = useAuthStore();
   const [activeTab, setActiveTab] = useState<"list" | "issue" | "verify">("list");
 
+  // Query all JACs if in SuperAdmin mode
+  const { data: allJacs } = useQuery<
+    Array<{ id: string; name: string; veredaOrBarrio: string }>
+  >({
+    queryKey: ["all-jacs-for-superadmin"],
+    queryFn: () => apiClient("/jacs"),
+    enabled: isSuperAdmin,
+  });
+
+  const [formJacId, setFormJacId] = useState<string>("");
+  const activeJacId = currentJacId || formJacId || allJacs?.[0]?.id || "";
+
   // Search & filter for issued certificates list
   const [listSearch, setListSearch] = useState("");
 
@@ -145,7 +157,7 @@ export default function CertificatesPage() {
     queryFn: () => apiClient("/certificates/jac-certificates"),
   });
 
-  // Query: Affiliates in current JAC (for the selector)
+  // Query: Affiliates in active JAC (for the selector)
   const { data: affiliatesData } = useQuery<{
     data: Array<{
       membershipId: string;
@@ -160,23 +172,30 @@ export default function CertificatesPage() {
       };
     }>;
   }>({
-    queryKey: ["affiliates-for-certs", currentJacId],
+    queryKey: ["affiliates-for-certs", activeJacId],
     queryFn: () => apiClient("/affiliates/book", { params: { limit: 100 } }),
-    enabled: Boolean(currentJacId),
+    enabled: Boolean(activeJacId),
   });
 
   const issueMutation = useMutation({
-    mutationFn: () =>
-      apiClient<CertificateResponse>("/certificates/request", {
+    mutationFn: () => {
+      if (!activeJacId) {
+        throw new Error("Debe seleccionar una Junta de Acción Comunal emisora.");
+      }
+      if (!purpose.trim() || purpose.trim().length < 5) {
+        throw new Error("El propósito o destino debe contener al menos 5 caracteres.");
+      }
+      return apiClient<CertificateResponse>("/certificates/request", {
         method: "POST",
         body: JSON.stringify({
-          jacId: currentJacId,
+          jacId: activeJacId,
           targetUserId: selectedAffiliateId || undefined,
           type: certType,
           purpose: purpose.trim(),
           deliveryMethod: "DIGITAL_DOWNLOAD",
         }),
-      }),
+      });
+    },
     onSuccess: (data: CertificateResponse) => {
       setIssuedCert(data.certificate);
       setPurpose("");
@@ -491,6 +510,31 @@ export default function CertificatesPage() {
               }}
               className="space-y-4"
             >
+              {isSuperAdmin && !currentJacId && (
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1.5">
+                    Junta de Acción Comunal Emisora *
+                  </label>
+                  <select
+                    value={activeJacId}
+                    onChange={(e) => {
+                      setFormJacId(e.target.value);
+                      setSelectedAffiliateId("");
+                    }}
+                    className="w-full px-3 py-2.5 rounded-xl border border-emerald-300 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 bg-emerald-50/30 font-medium text-emerald-950"
+                  >
+                    {allJacs?.map((jac) => (
+                      <option key={jac.id} value={jac.id}>
+                        {jac.name} (Vereda {jac.veredaOrBarrio})
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-[11px] text-slate-400 mt-1">
+                    Seleccione la JAC bajo cuya personería jurídica se expedirá la certificación oficial.
+                  </p>
+                </div>
+              )}
+
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1.5">
                   Habitante o Afiliado Titular *

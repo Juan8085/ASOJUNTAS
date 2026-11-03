@@ -71,8 +71,12 @@ export async function apiClient<T>(
 
   if (!response.ok) {
     const errorBody = await response.json().catch(() => ({}));
-    const errorMessage =
+    let errorMessage =
       errorBody.message || errorBody.error || `Error ${response.status}: ${response.statusText}`;
+    if (Array.isArray(errorBody.errors) && errorBody.errors.length > 0) {
+      const details = errorBody.errors.map((e: any) => `${e.field}: ${e.message}`).join(", ");
+      errorMessage = `${errorMessage} (${details})`;
+    }
     throw new Error(Array.isArray(errorMessage) ? errorMessage.join(", ") : errorMessage);
   }
 

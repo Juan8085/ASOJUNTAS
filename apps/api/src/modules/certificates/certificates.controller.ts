@@ -42,10 +42,9 @@ export class CertificatesController {
   })
   @ApiResponse({ status: 201, description: "Certificado generado exitosamente" })
   @ApiResponse({ status: 400, description: "No cumple con los requisitos o adeuda cuotas de tesorería" })
-  @UsePipes(new ZodValidationPipe(RequestCertificateSchema))
   async requestCertificate(
     @CurrentUser() user: UserJwtPayload,
-    @Body() body: RequestCertificateInput
+    @Body(new ZodValidationPipe(RequestCertificateSchema)) body: RequestCertificateInput
   ) {
     return this.certificatesService.requestCertificate(user.sub, body);
   }
