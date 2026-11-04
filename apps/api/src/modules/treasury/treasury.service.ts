@@ -469,6 +469,19 @@ export class TreasuryService {
       }
     }
 
+    const now = new Date();
+    const currentPeriodStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+
+    const realAdvancePeriods = advanceObligationsToCreate
+      .filter((a) => a.period > currentPeriodStr)
+      .map((a) => a.period);
+
+    const currentMonthPeriods = advanceObligationsToCreate
+      .filter((a) => a.period <= currentPeriodStr)
+      .map((a) => a.period);
+
+    const isAdvance = realAdvancePeriods.length > 0;
+
     return this.prisma.$transaction(async (tx) => {
       // 1. Actualizar obligaciones canceladas/abonadas
       for (const update of updatesToApply) {
@@ -521,8 +534,9 @@ export class TreasuryService {
             quotasPaidCount,
             accountId: account.id,
             accountName: account.name,
-            isAdvance: advanceObligationsToCreate.length > 0,
-            advancePeriods: advanceObligationsToCreate.map((a) => a.period),
+            isAdvance,
+            advancePeriods: realAdvancePeriods,
+            currentPeriods: currentMonthPeriods,
           },
         },
       });
@@ -530,10 +544,14 @@ export class TreasuryService {
       // 4. Asentar en libro de tesorería
       const methodLabel =
         input.paymentMethod === "CASH" ? "Efectivo (Caja General)" : `En Cuenta (${account.name})`;
-      const desc =
-        advanceObligationsToCreate.length > 0
-          ? `Recaudo cuotas comunales con adelanto (${methodLabel}) - Folio #${membership.folioNumber} ${membership.user.firstName} ${membership.user.lastName} (${advanceObligationsToCreate.length} cuotas anticipadas) - Recibo: ${receiptNumber}`
-          : `Recaudo cuotas comunales (${methodLabel}) - Folio #${membership.folioNumber} ${membership.user.firstName} ${membership.user.lastName} - Recibo: ${receiptNumber}`;
+      let desc = "";
+      if (realAdvancePeriods.length > 0 && currentMonthPeriods.length > 0) {
+        desc = `Recaudo cuotas comunales (${methodLabel}) - Folio #${membership.folioNumber} ${membership.user.firstName} ${membership.user.lastName} (Mes actual ${currentMonthPeriods.join(", ")} + Adelanto: ${realAdvancePeriods.join(", ")}) - Recibo: ${receiptNumber}`;
+      } else if (realAdvancePeriods.length > 0) {
+        desc = `Recaudo con adelanto (${methodLabel}) - Folio #${membership.folioNumber} ${membership.user.firstName} ${membership.user.lastName} (${realAdvancePeriods.length} cuotas anticipadas: ${realAdvancePeriods.join(", ")}) - Recibo: ${receiptNumber}`;
+      } else {
+        desc = `Recaudo cuotas comunales (${methodLabel}) - Folio #${membership.folioNumber} ${membership.user.firstName} ${membership.user.lastName} - Recibo: ${receiptNumber}`;
+      }
 
       const treasuryTx = await tx.treasuryTransaction.create({
         data: {
@@ -583,6 +601,17 @@ export class TreasuryService {
 
       const isUpToDate = remainingDebt === 0;
 
+      let successMsg = "";
+      if (realAdvancePeriods.length > 0 && currentMonthPeriods.length > 0) {
+        successMsg = `Pago de $${paymentAmount.toLocaleString()} COP registrado. Cubre el mes actual (${currentMonthPeriods.join(", ")}) y adelanta ${realAdvancePeriods.length} cuota(s) futura(s) (${realAdvancePeriods.join(", ")}).`;
+      } else if (realAdvancePeriods.length > 0) {
+        successMsg = `Pago de $${paymentAmount.toLocaleString()} COP registrado exitosamente. Se aplicó adelanto de ${realAdvancePeriods.length} cuota(s) futura(s) (Periodos: ${realAdvancePeriods.join(", ")}).`;
+      } else if (isUpToDate) {
+        successMsg = `Pago de $${paymentAmount.toLocaleString()} COP registrado. El afiliado ha quedado al día.`;
+      } else {
+        successMsg = `Pago registrado ($${paymentAmount.toLocaleString()} COP). Cubre ${quotasPaidCount} cuota(s). Saldo restante: $${remainingDebt.toLocaleString()} COP.`;
+      }
+
       return {
         success: true,
         receiptNumber,
@@ -593,12 +622,7 @@ export class TreasuryService {
         memberStatus,
         newAccountBalance: newBalance,
         movement: treasuryTx,
-        message:
-          advanceObligationsToCreate.length > 0
-            ? `Pago de $${paymentAmount.toLocaleString()} COP registrado exitosamente. Se aplicó adelanto de ${advanceObligationsToCreate.length} cuota(s) futura(s) (Periodos: ${advanceObligationsToCreate.map((a) => a.period).join(", ")}).`
-            : isUpToDate
-            ? `Pago de $${paymentAmount.toLocaleString()} COP registrado. El afiliado ha quedado al día.`
-            : `Pago registrado ($${paymentAmount.toLocaleString()} COP). Cubre ${quotasPaidCount} cuota(s). Saldo restante: $${remainingDebt.toLocaleString()} COP.`,
+        message: successMsg,
       };
     });
   }

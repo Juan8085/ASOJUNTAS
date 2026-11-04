@@ -11,6 +11,7 @@ import {
   MembershipStatus,
   IdentificationType,
   ObligationStatus,
+  PaymentStatus,
 } from "@conectajac/shared";
 
 interface ManualEnrollInput {
@@ -171,20 +172,12 @@ export class AffiliatesService {
       throw new NotFoundException("Afiliado no encontrado en esta JAC");
     }
 
-    // 1. Obtener todas las obligaciones de cuotas del afiliado (pasadas, actuales y adelantadas)
-    const obligations = await this.prisma.userFeeObligation.findMany({
-      where: { jacId, userId: membership.userId },
-      include: {
-        feeConfig: {
-          select: { name: true, type: true, amount: true },
-        },
-      },
-      orderBy: { dueDate: "asc" },
-    });
+    const now = new Date();
+    const currentPeriodStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
 
-    // 2. Obtener todos los pagos/recibos registrados
+    // 1. Obtener todos los pagos/recibos registrados
     const payments = await this.prisma.paymentTransaction.findMany({
-      where: { jacId, userId: membership.userId },
+      where: { jacId, userId: membership.userId, status: PaymentStatus.APPROVED },
       include: {
         treasuryTransactions: {
           include: {
@@ -196,18 +189,84 @@ export class AffiliatesService {
       orderBy: { paidAt: "desc" },
     });
 
-    const now = new Date();
-    const currentPeriodStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+    const totalApprovedPayments = payments.reduce((sum, p) => sum + p.amount, 0);
+
+    // 2. Obtener todas las obligaciones de cuotas del afiliado (pasadas, actuales y adelantadas)
+    let obligations = await this.prisma.userFeeObligation.findMany({
+      where: { jacId, userId: membership.userId },
+      include: {
+        feeConfig: {
+          select: { name: true, type: true, amount: true },
+        },
+      },
+      orderBy: { period: "asc" },
+    });
+
+    let totalCovered = obligations.reduce((sum, o) => sum + o.paidAmount, 0);
+
+    // Auto-reconciliación: si el afiliado tiene pagos aprobados que exceden las obligaciones generadas
+    if (totalApprovedPayments > totalCovered) {
+      const feeConfig = await this.prisma.feeConfiguration.findFirst({
+        where: { jacId, isActive: true },
+        orderBy: { createdAt: "asc" },
+      });
+      if (feeConfig) {
+        const quotaAmount = feeConfig.amount || 10000;
+        const existingPeriods = new Set(obligations.map((o) => o.period));
+        let diff = totalApprovedPayments - totalCovered;
+        let curYear = now.getFullYear();
+        let curMonth = now.getMonth();
+
+        while (diff > 0) {
+          const periodStr = `${curYear}-${String(curMonth + 1).padStart(2, "0")}`;
+          if (existingPeriods.has(periodStr)) {
+            curMonth++;
+            if (curMonth > 11) {
+              curMonth = 0;
+              curYear++;
+            }
+            continue;
+          }
+
+          const applied = Math.min(diff, quotaAmount);
+          const dueDate = new Date(curYear, curMonth, feeConfig.dueDateDay || 15);
+
+          const newObl = await this.prisma.userFeeObligation.create({
+            data: {
+              jacId,
+              userId: membership.userId,
+              feeConfigId: feeConfig.id,
+              period: periodStr,
+              amount: quotaAmount,
+              paidAmount: applied,
+              status: applied >= quotaAmount ? ObligationStatus.PAID : ObligationStatus.PARTIALLY_PAID,
+              dueDate,
+            },
+            include: {
+              feeConfig: { select: { name: true, type: true, amount: true } },
+            },
+          });
+
+          obligations.push(newObl);
+          existingPeriods.add(periodStr);
+          diff -= applied;
+
+          curMonth++;
+          if (curMonth > 11) {
+            curMonth = 0;
+            curYear++;
+          }
+        }
+      }
+    }
 
     let totalDebt = 0;
-    let totalPaidHistorically = 0;
     let overdueCount = 0;
     let advanceCount = 0;
 
     for (const obl of obligations) {
       const balance = Math.max(0, obl.amount - obl.paidAmount);
       totalDebt += balance;
-      totalPaidHistorically += obl.paidAmount;
 
       if (balance > 0 && (obl.status === ObligationStatus.OVERDUE || new Date(obl.dueDate) < now)) {
         overdueCount++;
@@ -217,6 +276,11 @@ export class AffiliatesService {
         advanceCount++;
       }
     }
+
+    const totalPaidHistorically = Math.max(
+      totalApprovedPayments,
+      obligations.reduce((sum, o) => sum + o.paidAmount, 0)
+    );
 
     return {
       affiliate: {

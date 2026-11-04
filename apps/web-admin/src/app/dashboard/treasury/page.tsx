@@ -315,6 +315,7 @@ export default function TreasuryPage() {
       queryClient.invalidateQueries({ queryKey: ["treasury-accounts"] });
       queryClient.invalidateQueries({ queryKey: ["treasury-summary"] });
       queryClient.invalidateQueries({ queryKey: ["affiliates-book"] });
+      queryClient.invalidateQueries({ queryKey: ["affiliate-statement"] });
       setStatusMessage(data.message || "Pago registrado exitosamente.");
       setPaymentModalAffiliate(null);
     },
@@ -1024,9 +1025,9 @@ export default function TreasuryPage() {
                           </span>
                         </td>
                         <td className="py-3.5 px-4">
-                          {r.isAdvance ? (
+                          {r.isAdvance && r.advancePeriods && r.advancePeriods.length > 0 ? (
                             <span className="px-2 py-0.5 rounded-full bg-purple-100 text-purple-800 text-[10px] font-bold">
-                              ✨ Adelanto ({r.advancePeriods?.join(", ") || `${r.quotasPaidCount} cuota(s)`})
+                              ✨ Adelanto ({r.advancePeriods.join(", ")})
                             </span>
                           ) : (
                             <span className="text-slate-700 font-medium">

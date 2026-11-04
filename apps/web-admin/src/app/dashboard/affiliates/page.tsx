@@ -1219,7 +1219,7 @@ export default function AffiliatesBookPage() {
                                       {p.paymentMethod === "CASH" ? "Efectivo (Caja General)" : "En Cuenta Bancaria"}
                                     </td>
                                     <td className="py-2.5 px-3">
-                                      {p.isAdvance ? (
+                                      {p.isAdvance && p.advancePeriods && p.advancePeriods.length > 0 ? (
                                         <span className="px-2 py-0.5 rounded-full bg-purple-100 text-purple-900 text-[10px] font-black border border-purple-200">
                                           ✨ Adelanto ({p.advancePeriods.join(", ")})
                                         </span>
