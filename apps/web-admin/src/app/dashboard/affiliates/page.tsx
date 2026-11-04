@@ -19,8 +19,12 @@ import {
   Globe,
   Compass,
   ExternalLink,
+  Download,
+  RefreshCw,
+  AlertTriangle,
 } from "lucide-react";
 import { IdentificationType, UserRole, MembershipStatus } from "@conectajac/shared";
+import { downloadCsv, formatDate } from "@/lib/utils";
 
 interface AffiliateItem {
   membershipId: string;
@@ -36,6 +40,7 @@ interface AffiliateItem {
   farmName?: string;
   latitude?: number;
   longitude?: number;
+  observations?: string;
   user: {
     id: string;
     identificationType: string;
@@ -161,6 +166,60 @@ export default function AffiliatesBookPage() {
     },
   });
 
+  const checkMorosityMutation = useMutation({
+    mutationFn: () => apiClient<{ message: string }>("/treasury/affiliates/check-morosity-suspensions", { method: "POST" }),
+    onSuccess: (res: { message: string }) => {
+      queryClient.invalidateQueries({ queryKey: ["affiliates-book"] });
+      queryClient.invalidateQueries({ queryKey: ["treasury-portfolio"] });
+      setEnrollSuccessMessage(res.message || "Auditoría de mora comunal aplicada con éxito.");
+    },
+  });
+
+  const handleExportBookExcel = () => {
+    if (!data?.data || data.data.length === 0) return;
+    const headers = [
+      "Folio",
+      "Tipo Documento",
+      "Número Documento",
+      "Nombres",
+      "Apellidos",
+      "Teléfono Móvil",
+      "Correo Electrónico",
+      "Dirección / Residencia",
+      "Vereda / Barrio",
+      "Finca / Predio",
+      "Ocupación",
+      "Rol Comunal",
+      "Estado Comunal",
+      "Fecha de Afiliación",
+      "Observaciones",
+    ];
+
+    const rows = data.data.map((item: AffiliateItem) => [
+      item.folioNumber,
+      item.user.identificationType,
+      item.user.identificationNumber,
+      item.user.firstName,
+      item.user.lastName,
+      item.user.phone,
+      item.user.email || "",
+      item.address,
+      item.veredaOrBarrio,
+      item.farmName || "",
+      item.occupation || "",
+      item.role,
+      item.status === MembershipStatus.ACTIVE
+        ? "Activo"
+        : item.status === MembershipStatus.SUSPENDED
+        ? "Suspendido por Mora (>3 meses)"
+        : "Inactivo",
+      item.affiliationDate ? formatDate(item.affiliationDate) : "",
+      item.observations || "",
+    ]);
+
+    downloadCsv(`Libro_Oficial_Afiliados_${new Date().toISOString().slice(0, 10)}`, headers, rows);
+  };
+
   const handleEnrollSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     enrollMutation.mutate(formData);
@@ -184,12 +243,32 @@ export default function AffiliatesBookPage() {
           </p>
         </div>
 
-        <button
-          onClick={() => setIsEnrollModalOpen(true)}
-          className="inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white font-semibold text-sm rounded-xl shadow-sm transition"
-        >
-          <UserPlus className="w-4 h-4" /> Inscribir Afiliado
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            onClick={handleExportBookExcel}
+            className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs rounded-xl shadow-sm transition border border-slate-200"
+            title="Descargar libro en formato Excel/CSV"
+          >
+            <Download className="w-4 h-4 text-emerald-600" /> Exportar Libro Excel
+          </button>
+
+          <button
+            onClick={() => checkMorosityMutation.mutate()}
+            disabled={checkMorosityMutation.isPending}
+            className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2.5 bg-slate-800 hover:bg-slate-900 active:bg-slate-950 text-white font-bold text-xs rounded-xl shadow-sm transition disabled:opacity-50"
+            title="Suspende a afiliados con más de 3 cuotas impagas según la Ley 2166"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${checkMorosityMutation.isPending ? "animate-spin" : ""}`} />
+            Auditar Mora (Ley 2166)
+          </button>
+
+          <button
+            onClick={() => setIsEnrollModalOpen(true)}
+            className="inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white font-semibold text-xs rounded-xl shadow-sm transition"
+          >
+            <UserPlus className="w-4 h-4" /> Inscribir Afiliado
+          </button>
+        </div>
       </div>
 
       {enrollSuccessMessage && (
@@ -351,16 +430,25 @@ export default function AffiliatesBookPage() {
                       </td>
                       <td className="py-3.5 px-4">
                         <span
-                          className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold ${
+                          className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold ${
                             item.status === MembershipStatus.ACTIVE
-                              ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                              ? "bg-emerald-50 text-emerald-800 border border-emerald-200"
                               : item.status === MembershipStatus.SUSPENDED
-                              ? "bg-amber-50 text-amber-700 border border-amber-200"
-                              : "bg-red-50 text-red-700 border border-red-200"
+                              ? "bg-rose-50 text-rose-800 border border-rose-200 font-black"
+                              : "bg-slate-100 text-slate-700 border border-slate-200"
                           }`}
                         >
-                          {item.status}
+                          {item.status === MembershipStatus.ACTIVE
+                            ? "Activo"
+                            : item.status === MembershipStatus.SUSPENDED
+                            ? "Suspendido (Mora >3m)"
+                            : "Inactivo"}
                         </span>
+                        {item.status === MembershipStatus.SUSPENDED && item.observations && (
+                          <span className="block text-[10px] text-rose-500 mt-0.5 max-w-xs truncate" title={item.observations}>
+                            {item.observations}
+                          </span>
+                        )}
                       </td>
                       <td className="py-3.5 px-4 text-slate-500 text-xs">
                         {new Date(item.affiliationDate).toLocaleDateString("es-CO")}

@@ -23,9 +23,14 @@ export class CertificatesService {
    */
   async requestCertificate(
     callerUserId: string,
-    input: RequestCertificateInput & { targetUserId?: string; citizenId?: string }
+    input: RequestCertificateInput & { targetUserId?: string | null; citizenId?: string | null }
   ) {
-    const targetUserId = input.targetUserId || input.citizenId || callerUserId;
+    const targetUserId =
+      input.targetUserId && input.targetUserId.trim() !== ""
+        ? input.targetUserId.trim()
+        : input.citizenId && input.citizenId.trim() !== ""
+        ? input.citizenId.trim()
+        : callerUserId;
 
     // 1. Validar que el habitante objetivo esté afiliado y activo en la JAC
     const membership = await this.prisma.jacMembership.findFirst({
@@ -39,8 +44,16 @@ export class CertificatesService {
       },
     });
 
-    if (!membership || membership.status !== MembershipStatus.ACTIVE) {
-      throw new BadRequestException("El habitante no cuenta con una afiliación activa en esta JAC");
+    if (!membership) {
+      throw new BadRequestException(
+        "El habitante no cuenta con afiliación registrada en esta JAC. Seleccione un afiliado del listado oficial."
+      );
+    }
+
+    if (membership.status !== MembershipStatus.ACTIVE) {
+      throw new BadRequestException(
+        `El afiliado se encuentra en estado ${membership.status}. No es posible expedir certificaciones a miembros no activos o suspendidos.`
+      );
     }
 
     // 2. Si es Paz y Salvo Comunal, validar que no tenga cuotas pendientes o en mora

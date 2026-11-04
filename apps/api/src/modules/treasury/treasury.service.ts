@@ -3,14 +3,25 @@ import {
   BadRequestException,
   NotFoundException,
 } from "@nestjs/common";
+import * as bcrypt from "bcryptjs";
 import { PrismaService } from "../../database/prisma.service";
 import {
   CreateFeeConfigInput,
+  UpdateFeeConfigInput,
   CreateTreasuryAccountInput,
   CreateTreasuryMovementInput,
+  RegisterAffiliatePaymentInput,
+  ImportAffiliatesBulkInput,
   MembershipStatus,
   ObligationStatus,
+  PaymentGateway,
+  PaymentMethod,
+  PaymentStatus,
   TreasuryTransactionType,
+  TreasuryCategory,
+  FeeType,
+  FeePeriodicity,
+  UserRole,
 } from "@conectajac/shared";
 
 @Injectable()
@@ -18,7 +29,7 @@ export class TreasuryService {
   constructor(private readonly prisma: PrismaService) {}
 
   /**
-   * Crear configuración de cuota comunal (ordinaria, extraordinaria, minga)
+   * Crear configuración de cuota comunal (ordinaria, extraordinaria, afiliación)
    */
   async createFeeConfig(input: CreateFeeConfigInput) {
     return this.prisma.feeConfiguration.create({
@@ -30,18 +41,73 @@ export class TreasuryService {
         periodicity: input.periodicity,
         amount: input.amount,
         dueDateDay: input.dueDateDay,
+        approvalDate: input.approvalDate ? new Date(input.approvalDate) : null,
+        expiryDate: input.expiryDate ? new Date(input.expiryDate) : null,
         isActive: input.active,
       },
     });
   }
 
   /**
-   * Listar cuotas configuradas en la JAC
+   * Modificar valor, periodicidad, fecha de aprobación y caducidad de cuota comunal
+   */
+  async updateFeeConfig(id: string, jacId: string, input: UpdateFeeConfigInput) {
+    const existing = await this.prisma.feeConfiguration.findFirst({
+      where: { id, jacId },
+    });
+
+    if (!existing) {
+      throw new NotFoundException("Configuración de cuota no encontrada en esta JAC");
+    }
+
+    return this.prisma.feeConfiguration.update({
+      where: { id },
+      data: {
+        ...(input.name && { name: input.name.trim() }),
+        ...(input.description !== undefined && { description: input.description?.trim() || null }),
+        ...(input.type && { type: input.type }),
+        ...(input.periodicity && { periodicity: input.periodicity }),
+        ...(input.amount !== undefined && { amount: input.amount }),
+        ...(input.dueDateDay !== undefined && { dueDateDay: input.dueDateDay }),
+        ...(input.approvalDate !== undefined && {
+          approvalDate: input.approvalDate ? new Date(input.approvalDate) : null,
+        }),
+        ...(input.expiryDate !== undefined && {
+          expiryDate: input.expiryDate ? new Date(input.expiryDate) : null,
+        }),
+        ...(input.active !== undefined && { isActive: input.active }),
+      },
+    });
+  }
+
+  /**
+   * Listar cuotas configuradas en la JAC con cálculo de caducidad estatutaria
    */
   async getFeeConfigs(jacId: string) {
-    return this.prisma.feeConfiguration.findMany({
+    const configs = await this.prisma.feeConfiguration.findMany({
       where: { jacId },
       orderBy: { createdAt: "desc" },
+    });
+
+    const now = new Date();
+    return configs.map((fee) => {
+      let isExpired = false;
+      let daysUntilExpiry: number | null = null;
+      let isExpiringSoon = false;
+
+      if (fee.expiryDate) {
+        const diffMs = fee.expiryDate.getTime() - now.getTime();
+        daysUntilExpiry = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+        isExpired = daysUntilExpiry <= 0;
+        isExpiringSoon = daysUntilExpiry > 0 && daysUntilExpiry <= 30;
+      }
+
+      return {
+        ...fee,
+        isExpired,
+        daysUntilExpiry,
+        isExpiringSoon,
+      };
     });
   }
 
@@ -109,6 +175,529 @@ export class TreasuryService {
   }
 
   /**
+   * Obtener cartera detallada de todos los afiliados: deuda pendiente, cuotas en mora y estado
+   */
+  async getAffiliatesPortfolio(jacId: string, search?: string) {
+    const members = await this.prisma.jacMembership.findMany({
+      where: {
+        jacId,
+        ...(search
+          ? {
+              OR: [
+                { user: { firstName: { contains: search, mode: "insensitive" } } },
+                { user: { lastName: { contains: search, mode: "insensitive" } } },
+                { user: { identificationNumber: { contains: search } } },
+                { veredaOrBarrio: { contains: search, mode: "insensitive" } },
+              ],
+            }
+          : {}),
+      },
+      include: {
+        user: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            identificationType: true,
+            identificationNumber: true,
+            phone: true,
+            email: true,
+          },
+        },
+      },
+      orderBy: { folioNumber: "asc" },
+    });
+
+    // Cargar obligaciones pendientes o parcialmente pagadas de la JAC
+    const pendingObligations = await this.prisma.userFeeObligation.findMany({
+      where: {
+        jacId,
+        status: { in: [ObligationStatus.PENDING, ObligationStatus.PARTIALLY_PAID, ObligationStatus.OVERDUE] },
+      },
+      include: {
+        feeConfig: {
+          select: {
+            name: true,
+            type: true,
+            amount: true,
+          },
+        },
+      },
+      orderBy: { dueDate: "asc" },
+    });
+
+    const now = new Date();
+    const obligationsByUser = new Map<string, typeof pendingObligations>();
+    for (const obl of pendingObligations) {
+      const userList = obligationsByUser.get(obl.userId) || [];
+      userList.push(obl);
+      obligationsByUser.set(obl.userId, userList);
+    }
+
+    let totalPortfolioDebt = 0;
+    let upToDateCount = 0;
+    let inMoraCount = 0;
+    let suspendedCount = 0;
+
+    const affiliates = members.map((member) => {
+      const userObligations = obligationsByUser.get(member.userId) || [];
+      const totalDebt = userObligations.reduce(
+        (sum, o) => sum + Math.max(0, o.amount - o.paidAmount),
+        0
+      );
+      totalPortfolioDebt += totalDebt;
+
+      const overdueCount = userObligations.filter(
+        (o) => o.status === ObligationStatus.OVERDUE || new Date(o.dueDate) < now
+      ).length;
+
+      const isUpToDate = totalDebt === 0;
+
+      if (member.status === MembershipStatus.SUSPENDED) {
+        suspendedCount++;
+      } else if (isUpToDate) {
+        upToDateCount++;
+      } else {
+        inMoraCount++;
+      }
+
+      return {
+        membershipId: member.id,
+        userId: member.user.id,
+        folioNumber: member.folioNumber,
+        bookNumber: member.bookNumber,
+        firstName: member.user.firstName,
+        lastName: member.user.lastName,
+        fullName: `${member.user.firstName} ${member.user.lastName}`,
+        identificationType: member.user.identificationType,
+        identificationNumber: member.user.identificationNumber,
+        phone: member.user.phone,
+        email: member.user.email,
+        address: member.address,
+        veredaOrBarrio: member.veredaOrBarrio,
+        membershipStatus: member.status,
+        totalDebt,
+        pendingQuotasCount: userObligations.length,
+        overdueQuotasCount: overdueCount,
+        isUpToDate,
+        isSeverelyOverdue: overdueCount >= 3,
+        obligations: userObligations.map((o) => ({
+          id: o.id,
+          period: o.period,
+          feeName: o.feeConfig?.name || "Cuota Comunal",
+          feeType: o.feeConfig?.type,
+          amount: o.amount,
+          paidAmount: o.paidAmount,
+          pendingBalance: Math.max(0, o.amount - o.paidAmount),
+          dueDate: o.dueDate,
+          status: o.status,
+        })),
+      };
+    });
+
+    return {
+      summary: {
+        totalPortfolioDebt,
+        totalAffiliates: members.length,
+        upToDateCount,
+        inMoraCount,
+        suspendedCount,
+      },
+      affiliates,
+    };
+  }
+
+  /**
+   * Registrar pago de cuotas de afiliado (Efectivo o En Cuenta)
+   * Aplica valor a cuotas más antiguas primero (FIFO), calcula remanente y actualiza estado de suspensión
+   */
+  async registerAffiliatePayment(
+    registeredByUserId: string,
+    input: RegisterAffiliatePaymentInput
+  ) {
+    const membership = await this.prisma.jacMembership.findFirst({
+      where: { jacId: input.jacId, userId: input.userId },
+      include: {
+        user: true,
+      },
+    });
+
+    if (!membership) {
+      throw new NotFoundException("Afiliado no encontrado en esta JAC");
+    }
+
+    const account = await this.prisma.treasuryAccount.findFirst({
+      where: { id: input.accountId, jacId: input.jacId },
+    });
+
+    if (!account) {
+      throw new NotFoundException("Cuenta de tesorería no encontrada en esta JAC");
+    }
+
+    // Buscar obligaciones pendientes ordenadas por vencimiento (FIFO)
+    const unpaidObligations = await this.prisma.userFeeObligation.findMany({
+      where: {
+        jacId: input.jacId,
+        userId: input.userId,
+        status: { in: [ObligationStatus.PENDING, ObligationStatus.PARTIALLY_PAID, ObligationStatus.OVERDUE] },
+      },
+      orderBy: { dueDate: "asc" },
+    });
+
+    const paymentAmount = Number(input.amount);
+    let remainingToApply = paymentAmount;
+    let quotasPaidCount = 0;
+    const updatesToApply: Array<{ id: string; status: ObligationStatus; paidAmount: number }> = [];
+
+    for (const obl of unpaidObligations) {
+      if (remainingToApply <= 0) break;
+      const debt = obl.amount - obl.paidAmount;
+      if (remainingToApply >= debt) {
+        remainingToApply -= debt;
+        quotasPaidCount++;
+        updatesToApply.push({
+          id: obl.id,
+          status: ObligationStatus.PAID,
+          paidAmount: obl.amount,
+        });
+      } else {
+        updatesToApply.push({
+          id: obl.id,
+          status: ObligationStatus.PARTIALLY_PAID,
+          paidAmount: obl.paidAmount + remainingToApply,
+        });
+        remainingToApply = 0;
+      }
+    }
+
+    const receiptNumber = input.receiptNumber?.trim() || `REC-${Date.now().toString().slice(-6)}`;
+    const newBalance = Number(account.balance) + paymentAmount;
+
+    return this.prisma.$transaction(async (tx) => {
+      // 1. Actualizar obligaciones canceladas/abonadas
+      for (const update of updatesToApply) {
+        await tx.userFeeObligation.update({
+          where: { id: update.id },
+          data: {
+            status: update.status,
+            paidAmount: update.paidAmount,
+          },
+        });
+      }
+
+      // 2. Aumentar balance de la cuenta seleccionada (Caja o Banco)
+      await tx.treasuryAccount.update({
+        where: { id: account.id },
+        data: { balance: newBalance },
+      });
+
+      // 3. Crear registro de pago formal
+      const paymentTx = await tx.paymentTransaction.create({
+        data: {
+          idempotencyKey: `MANUAL-${input.jacId}-${input.userId}-${Date.now()}`,
+          jacId: input.jacId,
+          userId: input.userId,
+          amount: paymentAmount,
+          currency: "COP",
+          gateway: PaymentGateway.MANUAL_CASH,
+          paymentMethod: input.paymentMethod as PaymentMethod,
+          status: PaymentStatus.APPROVED,
+          receiptNumber,
+          paidAt: new Date(),
+          metadata: {
+            notes: input.notes?.trim() || "",
+            quotasPaidCount,
+            accountId: account.id,
+            accountName: account.name,
+          },
+        },
+      });
+
+      // 4. Asentar en libro de tesorería
+      const methodLabel =
+        input.paymentMethod === "CASH" ? "Efectivo (Caja General)" : `En Cuenta (${account.name})`;
+      const desc = `Recaudo cuotas comunales (${methodLabel}) - Folio #${membership.folioNumber} ${membership.user.firstName} ${membership.user.lastName} - Recibo: ${receiptNumber}`;
+
+      const treasuryTx = await tx.treasuryTransaction.create({
+        data: {
+          jacId: input.jacId,
+          accountId: account.id,
+          registeredByUserId,
+          paymentTransactionId: paymentTx.id,
+          type: TreasuryTransactionType.INCOME,
+          category: TreasuryCategory.MONTHLY_FEE,
+          amount: paymentAmount,
+          balanceAfter: newBalance,
+          description: desc,
+          transactionDate: new Date(),
+        },
+      });
+
+      // 5. Calcular deuda remanente y verificar si se reactiva de suspensión
+      const remainingUnpaid = await tx.userFeeObligation.findMany({
+        where: {
+          jacId: input.jacId,
+          userId: input.userId,
+          status: { in: [ObligationStatus.PENDING, ObligationStatus.PARTIALLY_PAID, ObligationStatus.OVERDUE] },
+        },
+      });
+
+      const remainingDebt = remainingUnpaid.reduce(
+        (sum, o) => sum + Math.max(0, o.amount - o.paidAmount),
+        0
+      );
+
+      const overdueCount = remainingUnpaid.filter(
+        (o) => o.status === ObligationStatus.OVERDUE || new Date(o.dueDate) < new Date()
+      ).length;
+
+      let memberStatus = membership.status;
+      // Si estaba suspendido y ahora tiene menos de 3 cuotas en mora, reactivar a ACTIVO
+      if (membership.status === MembershipStatus.SUSPENDED && overdueCount < 3) {
+        memberStatus = MembershipStatus.ACTIVE;
+        await tx.jacMembership.update({
+          where: { id: membership.id },
+          data: {
+            status: MembershipStatus.ACTIVE,
+            observations: "Reactivado automáticamente tras cancelación/abono de cuotas en mora",
+          },
+        });
+      }
+
+      const isUpToDate = remainingDebt === 0;
+
+      return {
+        success: true,
+        receiptNumber,
+        paidAmount: paymentAmount,
+        quotasPaidCount,
+        remainingDebt,
+        isUpToDate,
+        memberStatus,
+        newAccountBalance: newBalance,
+        movement: treasuryTx,
+        message: isUpToDate
+          ? `Pago de $${paymentAmount.toLocaleString()} COP registrado. El afiliado ha quedado al día.`
+          : `Pago registrado ($${paymentAmount.toLocaleString()} COP). Cubre ${quotasPaidCount} cuota(s). Saldo restante: $${remainingDebt.toLocaleString()} COP.`,
+      };
+    });
+  }
+
+  /**
+   * Verificar mora de cuotas en toda la JAC: suspender afiliados con 3+ meses impagos
+   * conforme a la Ley 2166 de 2021 y reactivar a los que ya no cumplan esa condición
+   */
+  async checkMorositySuspensions(jacId: string) {
+    const activeMembers = await this.prisma.jacMembership.findMany({
+      where: { jacId },
+      include: {
+        user: { select: { firstName: true, lastName: true } },
+      },
+    });
+
+    const now = new Date();
+    let newlySuspendedCount = 0;
+    let newlyReactivatedCount = 0;
+
+    for (const member of activeMembers) {
+      const overdueObligationsCount = await this.prisma.userFeeObligation.count({
+        where: {
+          jacId,
+          userId: member.userId,
+          status: { in: [ObligationStatus.PENDING, ObligationStatus.PARTIALLY_PAID, ObligationStatus.OVERDUE] },
+          dueDate: { lt: now },
+        },
+      });
+
+      if (overdueObligationsCount >= 3 && member.status === MembershipStatus.ACTIVE) {
+        await this.prisma.jacMembership.update({
+          where: { id: member.id },
+          data: {
+            status: MembershipStatus.SUSPENDED,
+            observations: `Suspendido por mora en ${overdueObligationsCount} cuotas comunales (Ley 2166 de 2021 - Estatuto)`,
+          },
+        });
+        newlySuspendedCount++;
+      } else if (
+        overdueObligationsCount < 3 &&
+        member.status === MembershipStatus.SUSPENDED &&
+        (member.observations?.includes("mora") || member.observations?.includes("cuota"))
+      ) {
+        await this.prisma.jacMembership.update({
+          where: { id: member.id },
+          data: {
+            status: MembershipStatus.ACTIVE,
+            observations: "Reactivado al contar con menos de 3 cuotas en mora",
+          },
+        });
+        newlyReactivatedCount++;
+      }
+    }
+
+    return {
+      success: true,
+      newlySuspendedCount,
+      newlyReactivatedCount,
+      message: `Auditoría comunal completada: ${newlySuspendedCount} afiliado(s) suspendido(s) por 3+ cuotas de mora; ${newlyReactivatedCount} reactivado(s).`,
+    };
+  }
+
+  /**
+   * Importar afiliados masivamente con saldo inicial/cuotas pendientes desde plantilla
+   */
+  async importAffiliatesBulk(jacId: string, input: ImportAffiliatesBulkInput) {
+    let feeConfig = await this.prisma.feeConfiguration.findFirst({
+      where: { jacId, isActive: true },
+      orderBy: { createdAt: "asc" },
+    });
+
+    if (!feeConfig) {
+      feeConfig = await this.prisma.feeConfiguration.create({
+        data: {
+          jacId,
+          name: "Cuota Ordinaria Mensual",
+          description: "Cuota base comunal estatutaria",
+          type: FeeType.ORDINARY,
+          periodicity: FeePeriodicity.MONTHLY,
+          amount: 5000,
+          dueDateDay: 15,
+          isActive: true,
+        },
+      });
+    }
+
+    let processedCount = 0;
+    let createdCount = 0;
+    let updatedCount = 0;
+    let suspendedCount = 0;
+
+    for (const item of input.affiliates) {
+      processedCount++;
+      // 1. Buscar o crear usuario
+      let user = await this.prisma.user.findFirst({
+        where: { identificationNumber: item.identificationNumber },
+      });
+
+      if (!user) {
+        const defaultPasswordHash = await bcrypt.hash(item.identificationNumber, 10);
+        user = await this.prisma.user.create({
+          data: {
+            identificationType: item.identificationType,
+            identificationNumber: item.identificationNumber,
+            firstName: item.firstName.trim(),
+            lastName: item.lastName.trim(),
+            phone: item.phone.trim(),
+            email: item.email?.trim() || null,
+            passwordHash: defaultPasswordHash,
+          },
+        });
+        createdCount++;
+      }
+
+      // 2. Buscar o crear JacMembership
+      let membership = await this.prisma.jacMembership.findFirst({
+        where: { jacId, userId: user.id },
+      });
+
+      const isSuspendedDueToMora = item.pendingQuotasCount >= 3;
+      if (isSuspendedDueToMora) {
+        suspendedCount++;
+      }
+
+      if (!membership) {
+        membership = await this.prisma.jacMembership.create({
+          data: {
+            jacId,
+            userId: user.id,
+            bookNumber: 1,
+            folioNumber: item.folioNumber,
+            address: item.address.trim(),
+            veredaOrBarrio: item.veredaOrBarrio.trim(),
+            role: UserRole.CITIZEN,
+            status: isSuspendedDueToMora ? MembershipStatus.SUSPENDED : MembershipStatus.ACTIVE,
+            observations: isSuspendedDueToMora
+              ? "Suspendido por mora inicial superior a 3 cuotas comunales (Ley 2166 de 2021)"
+              : null,
+          },
+        });
+      } else {
+        await this.prisma.jacMembership.update({
+          where: { id: membership.id },
+          data: {
+            folioNumber: item.folioNumber,
+            address: item.address.trim(),
+            veredaOrBarrio: item.veredaOrBarrio.trim(),
+            ...(isSuspendedDueToMora
+              ? {
+                  status: MembershipStatus.SUSPENDED,
+                  observations: "Suspendido por mora inicial superior a 3 cuotas comunales",
+                }
+              : {}),
+          },
+        });
+        updatedCount++;
+      }
+
+      // 3. Crear obligaciones de deuda inicial si reporta cuotas pendientes
+      if (item.pendingQuotasCount > 0 || item.pendingAmount > 0) {
+        const quotaValue =
+          item.pendingAmount > 0 && item.pendingQuotasCount > 0
+            ? Math.round(item.pendingAmount / item.pendingQuotasCount)
+            : feeConfig.amount;
+
+        const count =
+          item.pendingQuotasCount > 0
+            ? item.pendingQuotasCount
+            : Math.max(1, Math.round(item.pendingAmount / quotaValue));
+
+        for (let i = 1; i <= count; i++) {
+          const pastDate = new Date();
+          pastDate.setMonth(pastDate.getMonth() - (count - i + 1));
+          const periodStr = `${pastDate.getFullYear()}-${String(pastDate.getMonth() + 1).padStart(2, "0")}`;
+
+          try {
+            await this.prisma.userFeeObligation.upsert({
+              where: {
+                jacId_userId_feeConfigId_period: {
+                  jacId,
+                  userId: user.id,
+                  feeConfigId: feeConfig.id,
+                  period: periodStr,
+                },
+              },
+              update: {
+                amount: quotaValue,
+                status: ObligationStatus.OVERDUE,
+              },
+              create: {
+                jacId,
+                userId: user.id,
+                feeConfigId: feeConfig.id,
+                period: periodStr,
+                amount: quotaValue,
+                paidAmount: 0,
+                status: ObligationStatus.OVERDUE,
+                dueDate: pastDate,
+              },
+            });
+          } catch {
+            // Ignorar duplicados
+          }
+        }
+      }
+    }
+
+    return {
+      success: true,
+      processedCount,
+      createdCount,
+      updatedCount,
+      suspendedCount,
+      message: `Procesados ${processedCount} registros: ${createdCount} usuarios nuevos, ${updatedCount} actualizados, ${suspendedCount} en suspensión por mora.`,
+    };
+  }
+
+  /**
    * Crear cuenta contable en tesorería (Caja, Banco, etc.)
    */
   async createAccount(input: CreateTreasuryAccountInput) {
@@ -134,7 +723,7 @@ export class TreasuryService {
   }
 
   /**
-   * Registrar movimiento de tesorería (Ingreso / Egreso) con actualización atómica de balance
+   * Registrar movimiento general de tesorería (Ingreso / Egreso) con actualización de balance
    */
   async createMovement(registeredByUserId: string, input: CreateTreasuryMovementInput) {
     const account = await this.prisma.treasuryAccount.findFirst({
@@ -190,7 +779,8 @@ export class TreasuryService {
   }
 
   /**
-   * Consulta paginada del Libro de Tesorería (movimientos contables)
+   * Consulta paginada del Libro de Tesorería (movimientos contables generales)
+   * Segrega cuotas ordinarias y de afiliación si excludeFees es true
    */
   async getMovements(
     jacId: string,
@@ -199,16 +789,26 @@ export class TreasuryService {
       limit?: number;
       accountId?: string;
       type?: TreasuryTransactionType;
+      excludeFees?: boolean;
     }
   ) {
     const page = Math.max(1, query.page ? Number(query.page) : 1);
     const limit = Math.max(1, Math.min(100, query.limit ? Number(query.limit) : 20));
     const skip = (page - 1) * limit;
 
+    const shouldExcludeFees = query.excludeFees !== false;
+
     const whereClause: Record<string, unknown> = {
       jacId,
       ...(query.accountId && { accountId: query.accountId }),
       ...(query.type && { type: query.type }),
+      ...(shouldExcludeFees
+        ? {
+            category: {
+              notIn: [TreasuryCategory.MONTHLY_FEE, TreasuryCategory.AFFILIATION_FEE],
+            },
+          }
+        : {}),
     };
 
     const [total, items] = await Promise.all([

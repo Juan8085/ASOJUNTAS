@@ -17,6 +17,10 @@ export type RequestCertificateInput = z.infer<typeof schemas.RequestCertificateS
 export type VerifyCertificateInput = z.infer<typeof schemas.VerifyCertificateSchema>;
 
 export type CreateFeeConfigInput = z.infer<typeof schemas.CreateFeeConfigSchema>;
+export type UpdateFeeConfigInput = z.infer<typeof schemas.UpdateFeeConfigSchema>;
+export type RegisterAffiliatePaymentInput = z.infer<typeof schemas.RegisterAffiliatePaymentSchema>;
+export type ImportAffiliateItemInput = z.infer<typeof schemas.ImportAffiliateItemSchema>;
+export type ImportAffiliatesBulkInput = z.infer<typeof schemas.ImportAffiliatesBulkSchema>;
 export type InitPaymentTransactionInput = z.infer<typeof schemas.InitPaymentTransactionSchema>;
 export type RecordManualPaymentInput = z.infer<typeof schemas.RecordManualPaymentSchema>;
 export type CreateTreasuryAccountInput = z.infer<typeof schemas.CreateTreasuryAccountSchema>;

@@ -118,10 +118,10 @@ export const AffiliationBookEntrySchema = z.object({
 
 export const RequestCertificateSchema = z.object({
   jacId: IdSchema,
-  targetUserId: IdSchema.optional(),
-  citizenId: IdSchema.optional(),
+  targetUserId: z.string().optional().nullable().or(z.literal("")),
+  citizenId: z.string().optional().nullable().or(z.literal("")),
   type: z.nativeEnum(CertificateType),
-  purpose: z.string().min(5).max(300), // Ej: Trámite bancario, subsidio vivienda
+  purpose: z.string().min(3).max(300), // Ej: Trámite bancario, subsidio vivienda
   deliveryMethod: z.enum(["DIGITAL_DOWNLOAD", "PHYSICAL_COLLECTION"]).default("DIGITAL_DOWNLOAD")
 });
 
@@ -140,7 +140,50 @@ export const CreateFeeConfigSchema = z.object({
   periodicity: z.nativeEnum(FeePeriodicity),
   amount: z.number().positive("El monto debe ser mayor a 0"),
   dueDateDay: z.number().min(1).max(31).default(15),
+  approvalDate: z.string().optional().nullable(),
+  expiryDate: z.string().optional().nullable(),
   active: z.boolean().default(true)
+});
+
+export const UpdateFeeConfigSchema = z.object({
+  name: z.string().min(3).max(120).optional(),
+  description: z.string().max(500).optional().nullable(),
+  type: z.nativeEnum(FeeType).optional(),
+  periodicity: z.nativeEnum(FeePeriodicity).optional(),
+  amount: z.number().positive("El monto debe ser mayor a 0").optional(),
+  dueDateDay: z.number().min(1).max(31).optional(),
+  approvalDate: z.string().optional().nullable(),
+  expiryDate: z.string().optional().nullable(),
+  active: z.boolean().optional()
+});
+
+export const RegisterAffiliatePaymentSchema = z.object({
+  jacId: IdSchema,
+  userId: IdSchema,
+  accountId: IdSchema,
+  amount: z.number().positive("El monto debe ser mayor a 0"),
+  paymentMethod: z.enum(["CASH", "BANK_TRANSFER"]),
+  receiptNumber: z.string().max(50).optional(),
+  notes: z.string().max(300).optional()
+});
+
+export const ImportAffiliateItemSchema = z.object({
+  folioNumber: z.number().positive(),
+  identificationType: z.nativeEnum(IdentificationType).default(IdentificationType.CC),
+  identificationNumber: z.string().min(4).max(20),
+  firstName: z.string().min(2).max(100),
+  lastName: z.string().min(2).max(100),
+  phone: z.string().min(7).max(15),
+  email: z.string().email().optional().or(z.literal("")),
+  address: z.string().min(2).max(200),
+  veredaOrBarrio: z.string().min(2).max(100),
+  pendingQuotasCount: z.number().min(0).default(0),
+  pendingAmount: z.number().min(0).default(0)
+});
+
+export const ImportAffiliatesBulkSchema = z.object({
+  jacId: IdSchema,
+  affiliates: z.array(ImportAffiliateItemSchema).min(1, "Debe incluir al menos un afiliado")
 });
 
 export const InitPaymentTransactionSchema = z.object({

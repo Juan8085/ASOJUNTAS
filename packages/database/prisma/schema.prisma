@@ -425,6 +425,8 @@ model FeeConfiguration {
   periodicity FeePeriodicity
   amount      Float
   dueDateDay  Int                 @default(15) @map("due_date_day")
+  approvalDate DateTime?          @map("approval_date")
+  expiryDate   DateTime?          @map("expiry_date")
   isActive    Boolean             @default(true) @map("is_active")
   createdAt   DateTime            @default(now()) @map("created_at")
   updatedAt   DateTime            @updatedAt @map("updated_at")

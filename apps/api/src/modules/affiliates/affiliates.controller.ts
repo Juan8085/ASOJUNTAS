@@ -52,6 +52,7 @@ export class AffiliatesController {
     UserRole.JAC_ADMIN,
     UserRole.JAC_PRESIDENT,
     UserRole.JAC_SECRETARY,
+    UserRole.JAC_TREASURER,
     UserRole.JAC_FISCAL
   )
   @UseGuards(TenantGuard, RolesGuard)
@@ -87,6 +88,7 @@ export class AffiliatesController {
     UserRole.JAC_ADMIN,
     UserRole.JAC_PRESIDENT,
     UserRole.JAC_SECRETARY,
+    UserRole.JAC_TREASURER,
     UserRole.JAC_FISCAL
   )
   @UseGuards(TenantGuard, RolesGuard)
@@ -106,7 +108,8 @@ export class AffiliatesController {
     UserRole.SUPER_ADMIN,
     UserRole.JAC_ADMIN,
     UserRole.JAC_PRESIDENT,
-    UserRole.JAC_SECRETARY
+    UserRole.JAC_SECRETARY,
+    UserRole.JAC_TREASURER
   )
   @UseGuards(TenantGuard, RolesGuard)
   @ApiOperation({
@@ -143,7 +146,8 @@ export class AffiliatesController {
     UserRole.SUPER_ADMIN,
     UserRole.JAC_ADMIN,
     UserRole.JAC_PRESIDENT,
-    UserRole.JAC_SECRETARY
+    UserRole.JAC_SECRETARY,
+    UserRole.JAC_TREASURER
   )
   @UseGuards(TenantGuard, RolesGuard)
   @ApiOperation({
