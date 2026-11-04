@@ -10,6 +10,7 @@ import {
   UserRole,
   MembershipStatus,
   IdentificationType,
+  ObligationStatus,
 } from "@conectajac/shared";
 
 interface ManualEnrollInput {
@@ -145,6 +146,147 @@ export class AffiliatesService {
     }
 
     return entry;
+  }
+
+  /**
+   * Estado de cuenta integral del afiliado: cuotas históricas, adelantos y recibos
+   */
+  async getAffiliateStatement(jacId: string, membershipId: string) {
+    const membership = await this.prisma.jacMembership.findFirst({
+      where: { id: membershipId, jacId },
+      include: {
+        user: true,
+        jac: {
+          select: {
+            id: true,
+            name: true,
+            legalPersonhoodNumber: true,
+            nit: true,
+          },
+        },
+      },
+    });
+
+    if (!membership) {
+      throw new NotFoundException("Afiliado no encontrado en esta JAC");
+    }
+
+    // 1. Obtener todas las obligaciones de cuotas del afiliado (pasadas, actuales y adelantadas)
+    const obligations = await this.prisma.userFeeObligation.findMany({
+      where: { jacId, userId: membership.userId },
+      include: {
+        feeConfig: {
+          select: { name: true, type: true, amount: true },
+        },
+      },
+      orderBy: { dueDate: "asc" },
+    });
+
+    // 2. Obtener todos los pagos/recibos registrados
+    const payments = await this.prisma.paymentTransaction.findMany({
+      where: { jacId, userId: membership.userId },
+      include: {
+        treasuryTransactions: {
+          include: {
+            account: { select: { name: true, type: true } },
+            registeredBy: { select: { firstName: true, lastName: true } },
+          },
+        },
+      },
+      orderBy: { paidAt: "desc" },
+    });
+
+    const now = new Date();
+    const currentPeriodStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+
+    let totalDebt = 0;
+    let totalPaidHistorically = 0;
+    let overdueCount = 0;
+    let advanceCount = 0;
+
+    for (const obl of obligations) {
+      const balance = Math.max(0, obl.amount - obl.paidAmount);
+      totalDebt += balance;
+      totalPaidHistorically += obl.paidAmount;
+
+      if (balance > 0 && (obl.status === ObligationStatus.OVERDUE || new Date(obl.dueDate) < now)) {
+        overdueCount++;
+      }
+
+      if (obl.status === ObligationStatus.PAID && obl.period > currentPeriodStr) {
+        advanceCount++;
+      }
+    }
+
+    return {
+      affiliate: {
+        membershipId: membership.id,
+        userId: membership.user.id,
+        folioNumber: membership.folioNumber,
+        bookNumber: membership.bookNumber,
+        affiliationDate: membership.affiliationDate,
+        role: membership.role,
+        status: membership.status,
+        observations: membership.observations,
+        address: membership.address,
+        veredaOrBarrio: membership.veredaOrBarrio,
+        occupation: membership.occupation,
+        hasLandOrFarm: membership.hasLandOrFarm,
+        farmName: membership.farmName,
+        latitude: membership.latitude,
+        longitude: membership.longitude,
+        user: {
+          id: membership.user.id,
+          firstName: membership.user.firstName,
+          lastName: membership.user.lastName,
+          fullName: `${membership.user.firstName} ${membership.user.lastName}`,
+          identificationType: membership.user.identificationType,
+          identificationNumber: membership.user.identificationNumber,
+          phone: membership.user.phone,
+          email: membership.user.email,
+        },
+        jac: membership.jac,
+      },
+      summary: {
+        totalDebt,
+        totalPaidHistorically,
+        isUpToDate: totalDebt === 0,
+        overdueCount,
+        advanceCount,
+        isSeverelyOverdue: overdueCount >= 3,
+      },
+      obligations: obligations.map((o) => ({
+        id: o.id,
+        period: o.period,
+        feeName: o.feeConfig?.name || "Cuota Comunal",
+        feeType: o.feeConfig?.type,
+        amount: o.amount,
+        paidAmount: o.paidAmount,
+        pendingBalance: Math.max(0, o.amount - o.paidAmount),
+        dueDate: o.dueDate,
+        status: o.status,
+        isAdvance: o.status === ObligationStatus.PAID && o.period > currentPeriodStr,
+      })),
+      payments: payments.map((p) => {
+        const metadata = (p.metadata as any) || {};
+        const treasury = p.treasuryTransactions[0];
+        return {
+          id: p.id,
+          receiptNumber: p.receiptNumber || `REC-${p.id.slice(-6)}`,
+          amount: p.amount,
+          paymentMethod: p.paymentMethod,
+          paidAt: p.paidAt || p.createdAt,
+          notes: metadata.notes || "",
+          quotasPaidCount: metadata.quotasPaidCount || 0,
+          accountName: treasury?.account?.name || metadata.accountName || "Caja / Banco",
+          registeredByName: treasury?.registeredBy
+            ? `${treasury.registeredBy.firstName} ${treasury.registeredBy.lastName}`
+            : "Directivo JAC",
+          isAdvance: Boolean(metadata.isAdvance),
+          advancePeriods: metadata.advancePeriods || [],
+        };
+      }),
+    };
   }
 
   /**

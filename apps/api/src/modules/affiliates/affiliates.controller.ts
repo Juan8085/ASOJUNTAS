@@ -103,6 +103,27 @@ export class AffiliatesController {
     return this.affiliatesService.getEntryById(jacId, id);
   }
 
+  @Get("book/:id/statement")
+  @Roles(
+    UserRole.SUPER_ADMIN,
+    UserRole.JAC_ADMIN,
+    UserRole.JAC_PRESIDENT,
+    UserRole.JAC_SECRETARY,
+    UserRole.JAC_TREASURER,
+    UserRole.JAC_FISCAL
+  )
+  @UseGuards(TenantGuard, RolesGuard)
+  @ApiOperation({
+    summary: "Consultar ficha integral y estado de cuenta del afiliado",
+    description: "Obtiene histórico de cuotas (pasadas, vigentes y adelantadas) y recibos de pago",
+  })
+  async getAffiliateStatement(
+    @CurrentTenant() jacId: string,
+    @Param("id") id: string
+  ) {
+    return this.affiliatesService.getAffiliateStatement(jacId, id);
+  }
+
   @Post("enroll")
   @Roles(
     UserRole.SUPER_ADMIN,

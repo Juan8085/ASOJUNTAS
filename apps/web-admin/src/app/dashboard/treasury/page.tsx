@@ -30,6 +30,8 @@ import {
   CreditCard,
   UserCheck,
   UserX,
+  Printer,
+  Eye,
 } from "lucide-react";
 import {
   TreasuryAccountType,
@@ -45,6 +47,29 @@ interface TreasuryAccountItem {
   name: string;
   type: string;
   balance: number;
+}
+
+interface PaymentReceiptItem {
+  id: string;
+  receiptNumber: string;
+  paidAt: string;
+  amount: number;
+  paymentMethod: string;
+  status: string;
+  notes: string;
+  quotasPaidCount: number;
+  advancePeriods: string[];
+  isAdvance: boolean;
+  user: {
+    id: string;
+    fullName: string;
+    identificationType: string;
+    identificationNumber: string;
+    folioNumber: number;
+    veredaOrBarrio: string;
+  };
+  accountName: string;
+  registeredByName: string;
 }
 
 interface TreasuryMovementItem {
@@ -100,6 +125,8 @@ interface PortfolioAffiliate {
   totalDebt: number;
   pendingQuotasCount: number;
   overdueQuotasCount: number;
+  advanceQuotasCount?: number;
+  advancePeriods?: string[];
   isUpToDate: boolean;
   isSeverelyOverdue: boolean;
   obligations: Array<{
@@ -122,6 +149,7 @@ interface PortfolioResponse {
     upToDateCount: number;
     inMoraCount: number;
     suspendedCount: number;
+    advanceCount?: number;
   };
   affiliates: PortfolioAffiliate[];
 }
@@ -129,7 +157,7 @@ interface PortfolioResponse {
 export default function TreasuryPage() {
   const queryClient = useQueryClient();
   const { currentJacId } = useAuthStore();
-  const [activeTab, setActiveTab] = useState<"portfolio" | "movements" | "movement_form" | "fees">("portfolio");
+  const [activeTab, setActiveTab] = useState<"portfolio" | "receipts" | "movements" | "movement_form" | "fees">("portfolio");
 
   // Notifications
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
@@ -137,6 +165,10 @@ export default function TreasuryPage() {
 
   // Search in portfolio
   const [portfolioSearch, setPortfolioSearch] = useState("");
+
+  // Search & view in receipts
+  const [receiptSearch, setReceiptSearch] = useState("");
+  const [viewingReceipt, setViewingReceipt] = useState<PaymentReceiptItem | null>(null);
 
   // Payment Modal State
   const [paymentModalAffiliate, setPaymentModalAffiliate] = useState<PortfolioAffiliate | null>(null);
@@ -187,6 +219,15 @@ export default function TreasuryPage() {
     enabled: Boolean(currentJacId),
   });
 
+  const { data: receiptsData, isLoading: isLoadingReceipts } = useQuery<PaymentReceiptItem[]>({
+    queryKey: ["treasury-receipts", currentJacId, receiptSearch],
+    queryFn: () =>
+      apiClient("/treasury/receipts", {
+        params: receiptSearch ? { search: receiptSearch } : undefined,
+      }),
+    enabled: Boolean(currentJacId),
+  });
+
   const { data: movementsData, isLoading: isLoadingMovements } = useQuery<MovementsResponse>({
     queryKey: ["treasury-movements", currentJacId],
     queryFn: () => apiClient("/treasury/movements", { params: { excludeFees: "true" } }),
@@ -233,6 +274,9 @@ export default function TreasuryPage() {
     const remainingDebt = Math.max(0, currentDebt - entered);
     const quotasPaid = entered > 0 ? Math.floor(entered / defaultMonthlyFee) : 0;
     const willBeUpToDate = remainingDebt === 0;
+    const isAdvance = entered > currentDebt;
+    const advanceAmount = isAdvance ? entered - currentDebt : 0;
+    const advanceQuotas = advanceAmount > 0 ? Math.floor(advanceAmount / defaultMonthlyFee) : 0;
 
     return {
       entered,
@@ -240,6 +284,9 @@ export default function TreasuryPage() {
       remainingDebt,
       quotasPaid,
       willBeUpToDate,
+      isAdvance,
+      advanceAmount,
+      advanceQuotas,
     };
   }, [paymentModalAffiliate, paymentAmount, defaultMonthlyFee]);
 
@@ -264,6 +311,7 @@ export default function TreasuryPage() {
     },
     onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: ["treasury-portfolio"] });
+      queryClient.invalidateQueries({ queryKey: ["treasury-receipts"] });
       queryClient.invalidateQueries({ queryKey: ["treasury-accounts"] });
       queryClient.invalidateQueries({ queryKey: ["treasury-summary"] });
       queryClient.invalidateQueries({ queryKey: ["affiliates-book"] });
@@ -323,6 +371,7 @@ export default function TreasuryPage() {
     },
     onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: ["treasury-portfolio"] });
+      queryClient.invalidateQueries({ queryKey: ["treasury-receipts"] });
       queryClient.invalidateQueries({ queryKey: ["affiliates-book"] });
       setIsImportModalOpen(false);
       setParsedImportRows([]);
@@ -377,6 +426,7 @@ export default function TreasuryPage() {
       "Dirección / Vereda",
       "Estado Membresía",
       "Cuotas Pendientes",
+      "Cuotas Adelantadas",
       "Total Adeudado (COP)",
       "Situación Financiera",
     ];
@@ -392,9 +442,12 @@ export default function TreasuryPage() {
       a.veredaOrBarrio || a.address,
       a.membershipStatus,
       a.pendingQuotasCount,
+      a.advanceQuotasCount || 0,
       a.totalDebt,
       a.isUpToDate
-        ? "Al Día"
+        ? a.advanceQuotasCount && a.advanceQuotasCount > 0
+          ? `Al Día (+${a.advanceQuotasCount} cuotas adelantadas)`
+          : "Al Día"
         : a.isSeverelyOverdue
         ? "Mora Crítica (>3 meses)"
         : "En Mora",
@@ -449,7 +502,6 @@ export default function TreasuryPage() {
         return;
       }
 
-      // Check separator (, or ;)
       const delimiter = lines[0].includes(";") ? ";" : ",";
       const rows: any[] = [];
 
@@ -503,7 +555,7 @@ export default function TreasuryPage() {
             </span>
           </div>
           <p className="text-sm text-slate-500 mt-1">
-            Gestión de cartera por afiliado, recaudo en efectivo o banco, arqueo de caja y libro de tesorería.
+            Gestión de cartera por afiliado, recaudo en efectivo o banco, adelantos de cuotas y libro de tesorería.
           </p>
         </div>
 
@@ -611,7 +663,22 @@ export default function TreasuryPage() {
               : "border-transparent text-slate-500 hover:text-slate-800"
           }`}
         >
-          <Users className="w-4 h-4" /> Cartera & Recaudos de Afiliados
+          <Users className="w-4 h-4" /> Cartera de Afiliados
+        </button>
+        <button
+          onClick={() => setActiveTab("receipts")}
+          className={`py-3 px-5 text-sm font-bold border-b-2 transition whitespace-nowrap flex items-center gap-2 ${
+            activeTab === "receipts"
+              ? "border-emerald-600 text-emerald-700"
+              : "border-transparent text-slate-500 hover:text-slate-800"
+          }`}
+        >
+          <Receipt className="w-4 h-4" /> Recaudos & Recibos Emitidos
+          {receiptsData && receiptsData.length > 0 && (
+            <span className="px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-black">
+              {receiptsData.length}
+            </span>
+          )}
         </button>
         <button
           onClick={() => setActiveTab("movements")}
@@ -649,7 +716,7 @@ export default function TreasuryPage() {
       {activeTab === "portfolio" && (
         <div className="space-y-4">
           {/* Summary KPIs */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
             <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-sm">
               <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 block">
                 Cartera Total por Cobrar
@@ -664,6 +731,14 @@ export default function TreasuryPage() {
               </span>
               <span className="text-xl font-black text-emerald-600 mt-1 block">
                 {portfolioData?.summary?.upToDateCount || 0} socios
+              </span>
+            </div>
+            <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-sm">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 block">
+                Cuotas Adelantadas
+              </span>
+              <span className="text-xl font-black text-purple-600 mt-1 block">
+                {portfolioData?.summary?.advanceCount || 0} a favor
               </span>
             </div>
             <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-sm">
@@ -770,9 +845,15 @@ export default function TreasuryPage() {
                         </td>
                         <td className="py-3.5 px-4 text-center">
                           {aff.pendingQuotasCount === 0 ? (
-                            <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-bold">
-                              Al Día (0)
-                            </span>
+                            aff.advanceQuotasCount && aff.advanceQuotasCount > 0 ? (
+                              <span className="px-2.5 py-0.5 rounded-full bg-purple-100 text-purple-900 text-[10px] font-black border border-purple-200 inline-flex items-center gap-1 shadow-sm">
+                                ✨ Al Día (+{aff.advanceQuotasCount} adelanto)
+                              </span>
+                            ) : (
+                              <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-bold">
+                                Al Día (0)
+                              </span>
+                            )
                           ) : (
                             <span
                               className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
@@ -794,9 +875,16 @@ export default function TreasuryPage() {
                               <UserX className="w-3 h-3" /> Suspendido (Mora)
                             </span>
                           ) : aff.isUpToDate ? (
-                            <span className="px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-black border border-emerald-200 inline-flex items-center gap-1">
-                              <UserCheck className="w-3 h-3" /> Activo (Al Día)
-                            </span>
+                            <div>
+                              <span className="px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-black border border-emerald-200 inline-flex items-center gap-1">
+                                <UserCheck className="w-3 h-3" /> Activo (Al Día)
+                              </span>
+                              {aff.advanceQuotasCount && aff.advanceQuotasCount > 0 && (
+                                <span className="block text-[10px] text-purple-700 font-bold mt-1">
+                                  🌟 {aff.advanceQuotasCount} cuota(s) por anticipado
+                                </span>
+                              )}
+                            </div>
                           ) : (
                             <span className="px-2.5 py-1 rounded-full bg-amber-100 text-amber-800 text-[10px] font-bold border border-amber-200">
                               Activo (En Mora)
@@ -821,7 +909,158 @@ export default function TreasuryPage() {
         </div>
       )}
 
-      {/* ================= TAB 2: GENERAL MOVEMENTS LEDGER (EXCLUDING QUOTAS) ================= */}
+      {/* ================= TAB 2: RECEIPTS & ISSUED PAYMENTS HISTORY ================= */}
+      {activeTab === "receipts" && (
+        <div className="space-y-4">
+          <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-sm flex flex-col md:flex-row items-center justify-between gap-3">
+            <div className="relative w-full md:w-80">
+              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
+              <input
+                type="text"
+                placeholder="Buscar por recibo, afiliado o cédula..."
+                value={receiptSearch}
+                onChange={(e) => setReceiptSearch(e.target.value)}
+                className="w-full pl-9 pr-3 py-2 text-xs rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+              />
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => {
+                  if (!receiptsData || receiptsData.length === 0) return;
+                  const headers = [
+                    "No. Recibo",
+                    "Fecha y Hora",
+                    "Folio",
+                    "Afiliado",
+                    "Cédula",
+                    "Vereda",
+                    "Monto (COP)",
+                    "Método de Pago",
+                    "Cuenta",
+                    "Cuotas Canceladas",
+                    "¿Incluye Adelanto?",
+                    "Periodos Adelantados",
+                    "Notas",
+                    "Registrado Por",
+                  ];
+                  const rows = receiptsData.map((r: PaymentReceiptItem) => [
+                    r.receiptNumber,
+                    formatDate(r.paidAt),
+                    r.user?.folioNumber || 0,
+                    r.user?.fullName || "",
+                    `${r.user?.identificationType || ""} ${r.user?.identificationNumber || ""}`,
+                    r.user?.veredaOrBarrio || "",
+                    r.amount,
+                    r.paymentMethod === "CASH" ? "Efectivo" : "En Cuenta",
+                    r.accountName,
+                    r.quotasPaidCount,
+                    r.isAdvance ? "SÍ" : "NO",
+                    r.advancePeriods?.join(", ") || "",
+                    r.notes || "",
+                    r.registeredByName,
+                  ]);
+                  downloadCsv(`Recibos_Recaudos_JAC_${new Date().toISOString().slice(0, 10)}`, headers, rows);
+                }}
+                className="px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold transition flex items-center gap-1.5"
+              >
+                <Download className="w-3.5 h-3.5 text-emerald-600" /> Exportar Recibos Excel
+              </button>
+            </div>
+          </div>
+
+          {/* Receipts Table */}
+          <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="bg-slate-50 border-b border-slate-200/80 text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                    <th className="py-3.5 px-4">Recibo #</th>
+                    <th className="py-3.5 px-4">Fecha y Hora</th>
+                    <th className="py-3.5 px-4">Afiliado(a)</th>
+                    <th className="py-3.5 px-4">Forma de Pago</th>
+                    <th className="py-3.5 px-4">Concepto / Adelantos</th>
+                    <th className="py-3.5 px-4 text-right">Monto Pagado</th>
+                    <th className="py-3.5 px-4 text-right">Comprobante</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 text-xs">
+                  {isLoadingReceipts ? (
+                    <tr>
+                      <td colSpan={7} className="py-8 text-center text-slate-400">
+                        Cargando historial de recibos...
+                      </td>
+                    </tr>
+                  ) : receiptsData?.length === 0 ? (
+                    <tr>
+                      <td colSpan={7} className="py-8 text-center text-slate-400">
+                        No se han registrado recaudos ni recibos todavía.
+                      </td>
+                    </tr>
+                  ) : (
+                    receiptsData?.map((r: PaymentReceiptItem) => (
+                      <tr key={r.id} className="hover:bg-slate-50/70 transition">
+                        <td className="py-3.5 px-4 font-mono font-bold text-emerald-700">
+                          {r.receiptNumber}
+                        </td>
+                        <td className="py-3.5 px-4 text-slate-500 font-mono">
+                          {formatDate(r.paidAt)}
+                        </td>
+                        <td className="py-3.5 px-4">
+                          <div className="font-bold text-slate-900">{r.user?.fullName}</div>
+                          <div className="text-[11px] text-slate-500">
+                            Folio #{r.user?.folioNumber} • {r.user?.identificationType} {r.user?.identificationNumber}
+                          </div>
+                        </td>
+                        <td className="py-3.5 px-4">
+                          <span
+                            className={`px-2 py-0.5 rounded-full text-[10px] font-bold inline-flex items-center gap-1 ${
+                              r.paymentMethod === "CASH"
+                                ? "bg-emerald-100 text-emerald-800"
+                                : "bg-blue-100 text-blue-800"
+                            }`}
+                          >
+                            {r.paymentMethod === "CASH" ? "Efectivo" : "En Cuenta"} ({r.accountName})
+                          </span>
+                        </td>
+                        <td className="py-3.5 px-4">
+                          {r.isAdvance ? (
+                            <span className="px-2 py-0.5 rounded-full bg-purple-100 text-purple-800 text-[10px] font-bold">
+                              ✨ Adelanto ({r.advancePeriods?.join(", ") || `${r.quotasPaidCount} cuota(s)`})
+                            </span>
+                          ) : (
+                            <span className="text-slate-700 font-medium">
+                              Cuotas comunales ({r.quotasPaidCount} cuota(s))
+                            </span>
+                          )}
+                          {r.notes && (
+                            <div className="text-[10px] text-slate-400 italic truncate max-w-xs">
+                              {r.notes}
+                            </div>
+                          )}
+                        </td>
+                        <td className="py-3.5 px-4 text-right font-black text-emerald-600 text-sm">
+                          {formatCurrency(r.amount)}
+                        </td>
+                        <td className="py-3.5 px-4 text-right">
+                          <button
+                            onClick={() => setViewingReceipt(r)}
+                            className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs transition inline-flex items-center gap-1.5"
+                          >
+                            <Eye className="w-3.5 h-3.5 text-emerald-600" /> Ver Comprobante
+                          </button>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ================= TAB 3: GENERAL MOVEMENTS LEDGER (EXCLUDING QUOTAS) ================= */}
       {activeTab === "movements" && (
         <div className="space-y-3">
           <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 text-xs text-slate-600 flex items-center justify-between">
@@ -925,7 +1164,7 @@ export default function TreasuryPage() {
         </div>
       )}
 
-      {/* ================= TAB 3: REGISTER GENERAL MOVEMENT (NON-QUOTA) ================= */}
+      {/* ================= TAB 4: REGISTER GENERAL MOVEMENT (NON-QUOTA) ================= */}
       {activeTab === "movement_form" && (
         <div className="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-sm max-w-xl mx-auto">
           <div className="mb-4">
@@ -1041,7 +1280,7 @@ export default function TreasuryPage() {
         </div>
       )}
 
-      {/* ================= TAB 4: FEES CONFIGURATION & STATUTE EXPIRY ================= */}
+      {/* ================= TAB 5: FEES CONFIGURATION & STATUTE EXPIRY ================= */}
       {activeTab === "fees" && (
         <div className="space-y-4">
           <div className="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-sm">
@@ -1289,6 +1528,17 @@ export default function TreasuryPage() {
                       </strong>
                     </div>
                   </div>
+                  {paymentCalculation.isAdvance && (
+                    <div className="p-2.5 rounded-xl bg-purple-50 border border-purple-200 text-purple-900 font-semibold text-[11px] space-y-1">
+                      <div className="font-bold flex items-center gap-1">
+                        ✨ Incluye Pago por Adelantado:
+                      </div>
+                      <p className="text-purple-800 text-[10px]">
+                        Este monto cubre la deuda y adelanta{" "}
+                        <strong>{paymentCalculation.advanceQuotas} cuota(s) futura(s)</strong> (${formatCurrency(paymentCalculation.advanceAmount)}).
+                      </p>
+                    </div>
+                  )}
                   <div className="pt-1 border-t border-emerald-200/60 font-semibold">
                     {paymentCalculation.willBeUpToDate ? (
                       <span className="text-emerald-700 flex items-center gap-1 font-bold">
@@ -1553,6 +1803,103 @@ export default function TreasuryPage() {
                 {bulkImportMutation.isPending
                   ? "Importando..."
                   : `Procesar Importación (${parsedImportRows.length})`}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ================= MODAL: COMPROBANTE OFICIAL DE RECAUDO ================= */}
+      {viewingReceipt && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-slate-100 space-y-5 print:p-0 print:border-none print:shadow-none">
+            <div className="flex items-start justify-between border-b border-slate-100 pb-3">
+              <div>
+                <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200">
+                  Comprobante Oficial de Ingreso
+                </span>
+                <h3 className="text-base font-black text-slate-900 mt-1">
+                  Recibo de Tesorería Comunal
+                </h3>
+                <p className="text-xs font-mono text-emerald-700 font-bold">
+                  {viewingReceipt.receiptNumber}
+                </p>
+              </div>
+              <button
+                onClick={() => setViewingReceipt(null)}
+                className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-500 font-bold print:hidden"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200/80 space-y-3 text-xs">
+              <div className="flex justify-between">
+                <span className="text-slate-500">Fecha y Hora de Recaudo:</span>
+                <span className="font-semibold text-slate-800 font-mono">
+                  {formatDate(viewingReceipt.paidAt)}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Afiliado Titular:</span>
+                <span className="font-bold text-slate-900">
+                  {viewingReceipt.user?.fullName} (Folio #{viewingReceipt.user?.folioNumber})
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Documento de Identidad:</span>
+                <span className="font-mono text-slate-800">
+                  {viewingReceipt.user?.identificationType} {viewingReceipt.user?.identificationNumber}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Sector / Vereda:</span>
+                <span className="text-slate-800">
+                  {viewingReceipt.user?.veredaOrBarrio || "Vereda Central"}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Forma de Pago:</span>
+                <span className="font-bold text-slate-800">
+                  {viewingReceipt.paymentMethod === "CASH" ? "Efectivo (Caja General)" : "En Cuenta Bancaria"} ({viewingReceipt.accountName})
+                </span>
+              </div>
+              <div className="flex justify-between border-t border-slate-200/80 pt-2 text-sm">
+                <span className="font-bold text-slate-900">Monto Recaudado:</span>
+                <span className="font-black text-emerald-600 text-base">
+                  {formatCurrency(viewingReceipt.amount)}
+                </span>
+              </div>
+              {viewingReceipt.isAdvance && (
+                <div className="p-2 rounded-xl bg-purple-50 border border-purple-200 text-purple-900 text-[11px] font-semibold">
+                  ✨ Incluye pago por adelantado de {viewingReceipt.advancePeriods?.length || 1} cuota(s) (Periodos: {viewingReceipt.advancePeriods?.join(", ")})
+                </div>
+              )}
+              {viewingReceipt.notes && (
+                <div className="text-[11px] text-slate-500 border-t border-slate-200/80 pt-2">
+                  <strong>Observaciones:</strong> {viewingReceipt.notes}
+                </div>
+              )}
+              <div className="flex justify-between text-[11px] text-slate-400 border-t border-slate-200/80 pt-2">
+                <span>Registrado formalmente por:</span>
+                <span className="font-semibold text-slate-700">{viewingReceipt.registeredByName}</span>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 pt-2 print:hidden">
+              <button
+                type="button"
+                onClick={() => setViewingReceipt(null)}
+                className="flex-1 py-2.5 rounded-xl border border-slate-200 text-slate-700 font-bold hover:bg-slate-50 transition text-xs"
+              >
+                Cerrar
+              </button>
+              <button
+                type="button"
+                onClick={() => window.print()}
+                className="flex-1 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold transition shadow-sm text-xs flex items-center justify-center gap-1.5"
+              >
+                <Printer className="w-4 h-4" /> Imprimir Comprobante
               </button>
             </div>
           </div>

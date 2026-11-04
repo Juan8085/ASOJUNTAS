@@ -227,6 +227,29 @@ export class TreasuryService {
     });
 
     const now = new Date();
+    const currentPeriodStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+
+    // Cargar obligaciones pagadas con periodos futuros (adelantos)
+    const advanceObligations = await this.prisma.userFeeObligation.findMany({
+      where: {
+        jacId,
+        status: ObligationStatus.PAID,
+        period: { gt: currentPeriodStr },
+      },
+      select: {
+        userId: true,
+        period: true,
+      },
+      orderBy: { period: "asc" },
+    });
+
+    const advancesByUser = new Map<string, string[]>();
+    for (const adv of advanceObligations) {
+      const list = advancesByUser.get(adv.userId) || [];
+      list.push(adv.period);
+      advancesByUser.set(adv.userId, list);
+    }
+
     const obligationsByUser = new Map<string, typeof pendingObligations>();
     for (const obl of pendingObligations) {
       const userList = obligationsByUser.get(obl.userId) || [];
@@ -279,6 +302,8 @@ export class TreasuryService {
         totalDebt,
         pendingQuotasCount: userObligations.length,
         overdueQuotasCount: overdueCount,
+        advanceQuotasCount: (advancesByUser.get(member.userId) || []).length,
+        advancePeriods: advancesByUser.get(member.userId) || [],
         isUpToDate,
         isSeverelyOverdue: overdueCount >= 3,
         obligations: userObligations.map((o) => ({
@@ -302,6 +327,7 @@ export class TreasuryService {
         upToDateCount,
         inMoraCount,
         suspendedCount,
+        advanceCount: advanceObligations.length,
       },
       affiliates,
     };
@@ -373,6 +399,76 @@ export class TreasuryService {
     const receiptNumber = input.receiptNumber?.trim() || `REC-${Date.now().toString().slice(-6)}`;
     const newBalance = Number(account.balance) + paymentAmount;
 
+    // 2. Si sobra dinero o el afiliado no tenía deudas, registrar ADELANTO de cuotas futuras
+    const advanceObligationsToCreate: Array<{ period: string; amount: number; paidAmount: number; dueDate: Date }> = [];
+    let feeConfigForAdvance = await this.prisma.feeConfiguration.findFirst({
+      where: { jacId: input.jacId, isActive: true },
+      orderBy: { createdAt: "asc" },
+    });
+
+    if (!feeConfigForAdvance) {
+      feeConfigForAdvance = await this.prisma.feeConfiguration.create({
+        data: {
+          jacId: input.jacId,
+          name: "Cuota Ordinaria Mensual",
+          description: "Cuota base estatutaria",
+          type: FeeType.ORDINARY,
+          periodicity: FeePeriodicity.MONTHLY,
+          amount: 5000,
+          dueDateDay: 15,
+          isActive: true,
+        },
+      });
+    }
+
+    if (remainingToApply > 0) {
+      const quotaAmount = feeConfigForAdvance.amount || 5000;
+
+      // Buscar los periodos ya registrados para este usuario para no duplicar
+      const existingUserObligations = await this.prisma.userFeeObligation.findMany({
+        where: { jacId: input.jacId, userId: input.userId },
+        select: { period: true },
+      });
+      const existingPeriods = new Set(existingUserObligations.map((o) => o.period));
+
+      let curYear = new Date().getFullYear();
+      let curMonth = new Date().getMonth(); // 0-based
+
+      while (remainingToApply > 0) {
+        const periodStr = `${curYear}-${String(curMonth + 1).padStart(2, "0")}`;
+        if (existingPeriods.has(periodStr)) {
+          curMonth++;
+          if (curMonth > 11) {
+            curMonth = 0;
+            curYear++;
+          }
+          continue;
+        }
+
+        const applied = Math.min(remainingToApply, quotaAmount);
+        const dueDate = new Date(curYear, curMonth, feeConfigForAdvance.dueDateDay || 15);
+
+        advanceObligationsToCreate.push({
+          period: periodStr,
+          amount: quotaAmount,
+          paidAmount: applied,
+          dueDate,
+        });
+
+        if (applied >= quotaAmount) {
+          quotasPaidCount++;
+        }
+        remainingToApply -= applied;
+        existingPeriods.add(periodStr);
+
+        curMonth++;
+        if (curMonth > 11) {
+          curMonth = 0;
+          curYear++;
+        }
+      }
+    }
+
     return this.prisma.$transaction(async (tx) => {
       // 1. Actualizar obligaciones canceladas/abonadas
       for (const update of updatesToApply) {
@@ -381,6 +477,22 @@ export class TreasuryService {
           data: {
             status: update.status,
             paidAmount: update.paidAmount,
+          },
+        });
+      }
+
+      // 1.b Asentar cuotas pagadas por adelanto
+      for (const adv of advanceObligationsToCreate) {
+        await tx.userFeeObligation.create({
+          data: {
+            jacId: input.jacId,
+            userId: input.userId,
+            feeConfigId: feeConfigForAdvance.id,
+            period: adv.period,
+            amount: adv.amount,
+            paidAmount: adv.paidAmount,
+            status: adv.paidAmount >= adv.amount ? ObligationStatus.PAID : ObligationStatus.PARTIALLY_PAID,
+            dueDate: adv.dueDate,
           },
         });
       }
@@ -409,6 +521,8 @@ export class TreasuryService {
             quotasPaidCount,
             accountId: account.id,
             accountName: account.name,
+            isAdvance: advanceObligationsToCreate.length > 0,
+            advancePeriods: advanceObligationsToCreate.map((a) => a.period),
           },
         },
       });
@@ -416,7 +530,10 @@ export class TreasuryService {
       // 4. Asentar en libro de tesorería
       const methodLabel =
         input.paymentMethod === "CASH" ? "Efectivo (Caja General)" : `En Cuenta (${account.name})`;
-      const desc = `Recaudo cuotas comunales (${methodLabel}) - Folio #${membership.folioNumber} ${membership.user.firstName} ${membership.user.lastName} - Recibo: ${receiptNumber}`;
+      const desc =
+        advanceObligationsToCreate.length > 0
+          ? `Recaudo cuotas comunales con adelanto (${methodLabel}) - Folio #${membership.folioNumber} ${membership.user.firstName} ${membership.user.lastName} (${advanceObligationsToCreate.length} cuotas anticipadas) - Recibo: ${receiptNumber}`
+          : `Recaudo cuotas comunales (${methodLabel}) - Folio #${membership.folioNumber} ${membership.user.firstName} ${membership.user.lastName} - Recibo: ${receiptNumber}`;
 
       const treasuryTx = await tx.treasuryTransaction.create({
         data: {
@@ -476,9 +593,86 @@ export class TreasuryService {
         memberStatus,
         newAccountBalance: newBalance,
         movement: treasuryTx,
-        message: isUpToDate
-          ? `Pago de $${paymentAmount.toLocaleString()} COP registrado. El afiliado ha quedado al día.`
-          : `Pago registrado ($${paymentAmount.toLocaleString()} COP). Cubre ${quotasPaidCount} cuota(s). Saldo restante: $${remainingDebt.toLocaleString()} COP.`,
+        message:
+          advanceObligationsToCreate.length > 0
+            ? `Pago de $${paymentAmount.toLocaleString()} COP registrado exitosamente. Se aplicó adelanto de ${advanceObligationsToCreate.length} cuota(s) futura(s) (Periodos: ${advanceObligationsToCreate.map((a) => a.period).join(", ")}).`
+            : isUpToDate
+            ? `Pago de $${paymentAmount.toLocaleString()} COP registrado. El afiliado ha quedado al día.`
+            : `Pago registrado ($${paymentAmount.toLocaleString()} COP). Cubre ${quotasPaidCount} cuota(s). Saldo restante: $${remainingDebt.toLocaleString()} COP.`,
+      };
+    });
+  }
+
+  /**
+   * Listar todos los recibos y pagos de cuotas emitidos en la JAC (Auditoría & Comprobantes)
+   */
+  async getReceipts(jacId: string, search?: string) {
+    const transactions = await this.prisma.paymentTransaction.findMany({
+      where: {
+        jacId,
+        ...(search
+          ? {
+              OR: [
+                { receiptNumber: { contains: search, mode: "insensitive" } },
+                { user: { firstName: { contains: search, mode: "insensitive" } } },
+                { user: { lastName: { contains: search, mode: "insensitive" } } },
+                { user: { identificationNumber: { contains: search } } },
+              ],
+            }
+          : {}),
+      },
+      include: {
+        user: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            identificationType: true,
+            identificationNumber: true,
+            memberships: {
+              where: { jacId },
+              select: { folioNumber: true, veredaOrBarrio: true, address: true },
+            },
+          },
+        },
+        treasuryTransactions: {
+          include: {
+            account: { select: { name: true, type: true } },
+            registeredBy: { select: { firstName: true, lastName: true } },
+          },
+        },
+      },
+      orderBy: { paidAt: "desc" },
+    });
+
+    return transactions.map((tx) => {
+      const membership = tx.user.memberships[0];
+      const treasury = tx.treasuryTransactions[0];
+      const metadata = (tx.metadata as any) || {};
+
+      return {
+        id: tx.id,
+        receiptNumber: tx.receiptNumber || `REC-${tx.id.slice(-6)}`,
+        paidAt: tx.paidAt || tx.createdAt,
+        amount: tx.amount,
+        paymentMethod: tx.paymentMethod,
+        status: tx.status,
+        notes: metadata.notes || "",
+        quotasPaidCount: metadata.quotasPaidCount || 0,
+        advancePeriods: metadata.advancePeriods || [],
+        isAdvance: Boolean(metadata.isAdvance),
+        user: {
+          id: tx.user.id,
+          fullName: `${tx.user.firstName} ${tx.user.lastName}`,
+          identificationType: tx.user.identificationType,
+          identificationNumber: tx.user.identificationNumber,
+          folioNumber: membership?.folioNumber || 0,
+          veredaOrBarrio: membership?.veredaOrBarrio || membership?.address || "",
+        },
+        accountName: treasury?.account?.name || metadata.accountName || "Caja / Banco",
+        registeredByName: treasury?.registeredBy
+          ? `${treasury.registeredBy.firstName} ${treasury.registeredBy.lastName}`
+          : "Directivo JAC",
       };
     });
   }

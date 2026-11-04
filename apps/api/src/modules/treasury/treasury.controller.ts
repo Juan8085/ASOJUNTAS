@@ -138,6 +138,26 @@ export class TreasuryController {
     return this.treasuryService.getAffiliatesPortfolio(jacId, search);
   }
 
+  @Get("receipts")
+  @Roles(
+    UserRole.SUPER_ADMIN,
+    UserRole.JAC_ADMIN,
+    UserRole.JAC_PRESIDENT,
+    UserRole.JAC_TREASURER,
+    UserRole.JAC_FISCAL
+  )
+  @UseGuards(TenantGuard, RolesGuard)
+  @ApiOperation({
+    summary: "Historial de recibos y recaudos de cuotas comunales",
+    description: "Lista de todos los pagos registrados con soporte de comprobante y detalle de cuotas/adelantos",
+  })
+  async getReceipts(
+    @CurrentTenant() jacId: string,
+    @Query("search") search?: string
+  ) {
+    return this.treasuryService.getReceipts(jacId, search);
+  }
+
   @Post("register-affiliate-payment")
   @Roles(
     UserRole.SUPER_ADMIN,
