@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -45,14 +45,28 @@ export default function RegisterScreen() {
   const [isLoading, setIsLoading] = useState(false);
 
   // Consultar JACs disponibles para afiliarse
-  const { data: jacsResponse, isLoading: loadingJacs } = useQuery<{
-    data: JacItem[];
-  }>({
+  const {
+    data: jacsResponse,
+    isLoading: loadingJacs,
+    refetch: refetchJacs,
+  } = useQuery<JacItem[] | { data: JacItem[] }>({
     queryKey: ["available-jacs"],
     queryFn: () => apiClient.get("/jacs?isActive=true"),
   });
 
-  const jacs = jacsResponse?.data || [];
+  const jacs: JacItem[] = Array.isArray(jacsResponse)
+    ? jacsResponse
+    : (jacsResponse as any)?.data || [];
+
+  useEffect(() => {
+    if (jacs.length > 0 && !formData.jacId) {
+      setFormData((prev) => ({
+        ...prev,
+        jacId: jacs[0].id,
+        veredaOrBarrio: jacs[0].veredaOrBarrio,
+      }));
+    }
+  }, [jacs, formData.jacId]);
 
   const handleRegister = async () => {
     if (!formData.jacId) {
@@ -127,7 +141,19 @@ export default function RegisterScreen() {
             1. Selecciona tu JAC Veredal / Barrial *
           </Text>
           {loadingJacs ? (
-            <ActivityIndicator color="#059669" className="py-2" />
+            <ActivityIndicator color="#059669" className="py-4" />
+          ) : jacs.length === 0 ? (
+            <View className="p-3.5 bg-amber-50 border border-amber-200 rounded-2xl items-center my-1">
+              <Text className="text-amber-800 text-xs text-center font-medium mb-1.5">
+                No se pudieron consultar las JACs. Verifica la conexión con el servidor.
+              </Text>
+              <TouchableOpacity
+                onPress={() => refetchJacs()}
+                className="bg-emerald-600 px-3.5 py-1.5 rounded-xl"
+              >
+                <Text className="text-white text-xs font-bold">Reintentar</Text>
+              </TouchableOpacity>
+            </View>
           ) : (
             <ScrollView horizontal showsHorizontalScrollIndicator={false} className="flex-row py-1">
               {jacs.map((jac) => {
@@ -142,15 +168,19 @@ export default function RegisterScreen() {
                         veredaOrBarrio: jac.veredaOrBarrio,
                       })
                     }
-                    className={`mr-3 p-3 rounded-2xl border ${
+                    className={`mr-3 p-3.5 rounded-2xl border ${
                       isSelected
-                        ? "bg-emerald-50 border-emerald-500"
+                        ? "bg-emerald-50 border-emerald-500 shadow-sm"
                         : "bg-slate-50 border-slate-200"
-                    } min-w-[200px]`}
+                    } min-w-[210px]`}
                   >
-                    <View className="flex-row items-center justify-between mb-1">
-                      <Building color={isSelected ? "#059669" : "#64748b"} size={18} />
-                      {isSelected && <CheckCircle2 color="#059669" size={16} />}
+                    <View className="flex-row items-center justify-between mb-1.5">
+                      <Building color={isSelected ? "#059669" : "#64748b"} size={20} />
+                      {isSelected ? (
+                        <CheckCircle2 color="#059669" size={18} />
+                      ) : (
+                        <View className="w-4 h-4 rounded-full border border-slate-300" />
+                      )}
                     </View>
                     <Text
                       numberOfLines={1}
@@ -161,7 +191,7 @@ export default function RegisterScreen() {
                       {jac.name}
                     </Text>
                     <Text className="text-[11px] text-slate-500 mt-0.5">
-                      {jac.municipality?.name} • PJ: {jac.legalPersonhoodNumber}
+                      Vereda {jac.veredaOrBarrio} • PJ: {jac.legalPersonhoodNumber}
                     </Text>
                   </TouchableOpacity>
                 );

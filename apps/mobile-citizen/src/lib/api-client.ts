@@ -4,12 +4,26 @@ import { Platform } from "react-native";
 
 declare const process: any;
 
-// En emulador Android se usa 10.0.2.2, en iOS y Web se usa localhost
-const DEFAULT_HOST = Platform.OS === "android" ? "http://10.0.2.2:4000" : "http://localhost:4000";
-const API_BASE_URL =
-  Constants.expoConfig?.extra?.apiUrl ||
-  (typeof process !== "undefined" && (process as any).env?.EXPO_PUBLIC_API_URL) ||
-  `${DEFAULT_HOST}/api/v1`;
+export function getApiBaseUrl(): string {
+  // 1. Variable de entorno explícita (e.g. EXPO_PUBLIC_API_URL en .env)
+  const envUrl =
+    (typeof process !== "undefined" && process.env?.EXPO_PUBLIC_API_URL) ||
+    Constants.expoConfig?.extra?.apiUrl;
+  if (envUrl) return envUrl;
+
+  // 2. Extraer dinámicamente la IP de la máquina anfitriona desde Expo Go (hostUri: "192.168.x.x:8081")
+  const hostUri = Constants.expoConfig?.hostUri;
+  if (hostUri) {
+    const hostIp = hostUri.split(":")[0];
+    if (hostIp && hostIp !== "localhost" && hostIp !== "127.0.0.1") {
+      return `http://${hostIp}:4000/api/v1`;
+    }
+  }
+
+  // 3. Fallbacks: emulador Android (10.0.2.2), iOS/Web (localhost)
+  const defaultHost = Platform.OS === "android" ? "http://10.0.2.2:4000" : "http://localhost:4000";
+  return `${defaultHost}/api/v1`;
+}
 
 export interface RequestOptions extends RequestInit {
   params?: Record<string, string | number | boolean | undefined>;
@@ -21,9 +35,10 @@ export async function apiClient<T>(
 ): Promise<T> {
   const { tokens, currentMembership, logout } = useAuthStore.getState();
 
+  const baseUrl = getApiBaseUrl();
   let url = endpoint.startsWith("http")
     ? endpoint
-    : `${API_BASE_URL}${endpoint.startsWith("/") ? "" : "/"}${endpoint}`;
+    : `${baseUrl}${endpoint.startsWith("/") ? "" : "/"}${endpoint}`;
 
   if (options.params) {
     const searchParams = new URLSearchParams();
