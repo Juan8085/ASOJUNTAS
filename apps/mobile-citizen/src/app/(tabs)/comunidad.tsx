@@ -191,6 +191,7 @@ export default function ComunidadScreen() {
       {/* Content */}
       <ScrollView
         className="flex-1 px-4 py-4"
+        contentContainerStyle={{ paddingBottom: 60 }}
         refreshControl={
           <RefreshControl
             refreshing={loadingMingas || loadingAssemblies || loadingPqrsd}

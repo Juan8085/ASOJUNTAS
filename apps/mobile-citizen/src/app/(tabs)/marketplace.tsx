@@ -207,6 +207,7 @@ export default function MarketplaceScreen() {
       {/* Product List */}
       <ScrollView
         className="flex-1 px-4 py-4"
+        contentContainerStyle={{ paddingBottom: 60 }}
         refreshControl={<RefreshControl refreshing={isLoading} onRefresh={refetch} />}
       >
         {isLoading ? (

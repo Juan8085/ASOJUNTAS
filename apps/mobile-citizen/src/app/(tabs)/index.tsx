@@ -48,7 +48,7 @@ export default function HomeScreen() {
   // Si no ha iniciado sesión, pantalla de bienvenida informativa
   if (!user || !currentMembership) {
     return (
-      <ScrollView className="flex-1 bg-slate-50">
+      <ScrollView className="flex-1 bg-slate-50" contentContainerStyle={{ paddingBottom: 60 }}>
         <View className="bg-emerald-600 px-6 pt-10 pb-12 rounded-b-[36px] shadow-sm items-center">
           <View className="w-16 h-16 rounded-2xl bg-white/20 items-center justify-center mb-4">
             <ShieldCheck color="#ffffff" size={36} />
@@ -93,6 +93,7 @@ export default function HomeScreen() {
   return (
     <ScrollView
       className="flex-1 bg-slate-50"
+      contentContainerStyle={{ paddingBottom: 60 }}
       refreshControl={<RefreshControl refreshing={loadingPosts} onRefresh={refetch} />}
     >
       {/* Vereda Header */}

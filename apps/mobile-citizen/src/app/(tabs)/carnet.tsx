@@ -40,7 +40,7 @@ export default function CarnetScreen() {
   };
 
   return (
-    <ScrollView className="flex-1 bg-slate-900" contentContainerStyle={{ padding: 20, paddingBottom: 40 }}>
+    <ScrollView className="flex-1 bg-slate-900" contentContainerStyle={{ padding: 20, paddingBottom: 60 }}>
       {/* Title */}
       <View className="items-center mb-6">
         <View className="flex-row items-center space-x-1.5 bg-emerald-500/20 border border-emerald-500/30 px-3 py-1 rounded-full mb-2">
