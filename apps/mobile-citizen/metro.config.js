@@ -29,3 +29,4 @@ config.resolver.blockList = [
 ];
 
 module.exports = config;
+
