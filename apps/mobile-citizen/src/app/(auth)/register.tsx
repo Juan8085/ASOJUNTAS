@@ -13,7 +13,7 @@ import { useQuery } from "@tanstack/react-query";
 import { apiClient } from "../../lib/api-client";
 import { useAuthStore } from "../../lib/auth-store";
 import { IdentificationType } from "@conectajac/shared";
-import { CheckCircle2, Building, ShieldCheck } from "lucide-react-native";
+import { CheckCircle2, Building, ShieldCheck, KeyRound } from "lucide-react-native";
 
 interface JacItem {
   id: string;
@@ -39,7 +39,6 @@ export default function RegisterScreen() {
     phone: "",
     address: "",
     veredaOrBarrio: "",
-    password: "",
   });
 
   const [isLoading, setIsLoading] = useState(false);
@@ -78,9 +77,9 @@ export default function RegisterScreen() {
       !formData.firstName.trim() ||
       !formData.lastName.trim() ||
       !formData.phone.trim() ||
-      !formData.password.trim()
+      !formData.address.trim()
     ) {
-      Alert.alert("Campos requeridos", "Por favor completa todos los campos obligatorios.");
+      Alert.alert("Campos requeridos", "Por favor completa todos los campos obligatorios marcados con *.");
       return;
     }
 
@@ -91,9 +90,12 @@ export default function RegisterScreen() {
         email: formData.email.trim() || undefined,
       });
 
+      const assignedPin =
+        res.accessPin || formData.identificationNumber.trim().slice(-4);
+
       Alert.alert(
-        "¡Solicitud de Afiliación Registrada!",
-        `Has sido registrado satisfactoriamente en el libro de afiliados. Folio asignado: #${res.folioNumber || 1}.`,
+        "¡Solicitud de Afiliación Radicada!",
+        `Has sido registrado satisfactoriamente en el Libro Digital de Afiliados.\n\n• Folio legal asignado: #${res.folioNumber || 1}\n• Tu PIN de acceso móvil es: ${assignedPin}\n\nUsa tu número de cédula y este PIN de 4 dígitos para ingresar a la aplicación. La directiva de tu JAC también puede restablecerlo si lo olvidas.`,
         [
           {
             text: "Continuar al Portal",
@@ -292,18 +294,20 @@ export default function RegisterScreen() {
           />
         </View>
 
-        {/* Password */}
-        <View className="mt-4">
-          <Text className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-            Crea tu Contraseña de Acceso *
-          </Text>
-          <TextInput
-            value={formData.password}
-            onChangeText={(val) => setFormData({ ...formData, password: val })}
-            placeholder="Mínimo 6 caracteres"
-            secureTextEntry
-            className="bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-slate-900 text-sm"
-          />
+        {/* PIN de Acceso Móvil Informativo */}
+        <View className="mt-4 p-4 bg-emerald-50/70 border border-emerald-200 rounded-2xl flex-row items-start space-x-3">
+          <KeyRound color="#059669" size={22} />
+          <View className="flex-1 ml-2">
+            <Text className="text-xs font-bold text-emerald-900 uppercase tracking-wider">
+              PIN de Acceso Móvil
+            </Text>
+            <Text className="text-xs text-emerald-800 mt-1 leading-relaxed">
+              No necesitas crear una contraseña. Tu PIN inicial de ingreso corresponderá automáticamente a los <Text className="font-bold">últimos 4 dígitos de tu documento</Text>.
+            </Text>
+            <Text className="text-[11px] text-emerald-700/90 mt-1">
+              La directiva de tu JAC podrá consultar o restablecer tu PIN en cualquier momento desde la web administrativa.
+            </Text>
+          </View>
         </View>
 
         {/* Submit */}

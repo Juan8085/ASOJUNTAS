@@ -308,6 +308,7 @@ export class AffiliatesService {
           identificationNumber: membership.user.identificationNumber,
           phone: membership.user.phone,
           email: membership.user.email,
+          accessPin: membership.user.accessPin || membership.user.identificationNumber.slice(-4),
         },
         jac: membership.jac,
       },
@@ -401,11 +402,11 @@ export class AffiliatesService {
     });
     const nextFolioNumber = (lastMembership?.folioNumber ?? 0) + 1;
 
-    // Si el usuario no existe, crearlo con password por defecto (los últimos 6 dígitos del documento)
+    // Si el usuario no existe, crearlo con PIN por defecto (los últimos 4 dígitos del documento)
     return this.prisma.$transaction(async (tx) => {
       if (!user) {
-        const defaultPassword = input.identificationNumber.slice(-6);
-        const passwordHash = await bcrypt.hash(defaultPassword, 10);
+        const defaultPin = input.identificationNumber.trim().slice(-4);
+        const passwordHash = await bcrypt.hash(defaultPin, 10);
 
         user = await tx.user.create({
           data: {
@@ -415,6 +416,7 @@ export class AffiliatesService {
             lastName: input.lastName.trim(),
             email: input.email ? input.email.toLowerCase().trim() : null,
             phone: input.phone.trim(),
+            accessPin: defaultPin,
             passwordHash,
             latitude: input.latitude,
             longitude: input.longitude,
@@ -513,6 +515,37 @@ export class AffiliatesService {
     });
 
     return memberships;
+  }
+
+  /**
+   * Restablecer PIN de acceso móvil para un afiliado (Directivos JAC)
+   */
+  async resetAffiliatePin(jacId: string, membershipId: string, newPin?: string) {
+    const membership = await this.prisma.jacMembership.findFirst({
+      where: { id: membershipId, jacId },
+      include: { user: true },
+    });
+
+    if (!membership) {
+      throw new NotFoundException("Afiliado no encontrado en esta JAC");
+    }
+
+    const pinToSet = newPin?.trim() || membership.user.identificationNumber.trim().slice(-4);
+    const passwordHash = await bcrypt.hash(pinToSet, 10);
+
+    await this.prisma.user.update({
+      where: { id: membership.userId },
+      data: {
+        accessPin: pinToSet,
+        passwordHash,
+      },
+    });
+
+    return {
+      message: `PIN de acceso móvil restablecido exitosamente a ${pinToSet}`,
+      pin: pinToSet,
+      affiliateName: `${membership.user.firstName} ${membership.user.lastName}`,
+    };
   }
 }
 

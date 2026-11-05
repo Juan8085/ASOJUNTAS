@@ -5,13 +5,8 @@ import { Platform } from "react-native";
 declare const process: any;
 
 export function getApiBaseUrl(): string {
-  // 1. Variable de entorno explícita (e.g. EXPO_PUBLIC_API_URL en .env)
-  const envUrl =
-    (typeof process !== "undefined" && process.env?.EXPO_PUBLIC_API_URL) ||
-    Constants.expoConfig?.extra?.apiUrl;
-  if (envUrl) return envUrl;
-
-  // 2. Extraer dinámicamente la IP de la máquina anfitriona desde Expo Go (hostUri: "192.168.x.x:8081")
+  // 1. Extraer dinámicamente la IP de la máquina anfitriona desde Expo Go (hostUri: "192.168.x.x:8081")
+  // Esto previene que cambios de IP por DHCP en Windows rompan la conexión en el celular físico.
   const hostUri = Constants.expoConfig?.hostUri;
   if (hostUri) {
     const hostIp = hostUri.split(":")[0];
@@ -19,6 +14,12 @@ export function getApiBaseUrl(): string {
       return `http://${hostIp}:4000/api/v1`;
     }
   }
+
+  // 2. Variable de entorno explícita (e.g. EXPO_PUBLIC_API_URL en .env o compilación de producción)
+  const envUrl =
+    (typeof process !== "undefined" && process.env?.EXPO_PUBLIC_API_URL) ||
+    Constants.expoConfig?.extra?.apiUrl;
+  if (envUrl) return envUrl;
 
   // 3. Fallbacks: emulador Android (10.0.2.2), iOS/Web (localhost)
   const defaultHost = Platform.OS === "android" ? "http://10.0.2.2:4000" : "http://localhost:4000";

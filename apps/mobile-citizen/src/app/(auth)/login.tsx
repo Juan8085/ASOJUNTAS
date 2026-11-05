@@ -13,7 +13,7 @@ import {
 import { useRouter } from "expo-router";
 import { useAuthStore } from "../../lib/auth-store";
 import { apiClient } from "../../lib/api-client";
-import { ShieldCheck, LogIn, UserPlus } from "lucide-react-native";
+import { ShieldCheck, LogIn, UserPlus, KeyRound, Eye, EyeOff } from "lucide-react-native";
 
 export default function LoginScreen() {
   const router = useRouter();
@@ -21,11 +21,12 @@ export default function LoginScreen() {
 
   const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
+  const [showPin, setShowPin] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
 
   const handleLogin = async () => {
     if (!identifier.trim() || !password.trim()) {
-      Alert.alert("Campos requeridos", "Por favor ingresa tu número de cédula o correo y tu contraseña.");
+      Alert.alert("Campos requeridos", "Por favor ingresa tu número de cédula y tu PIN de acceso.");
       return;
     }
 
@@ -45,7 +46,7 @@ export default function LoginScreen() {
     } catch (err: any) {
       Alert.alert(
         "Error de autenticación",
-        err.message || "Credenciales incorrectas. Verifica tu documento y contraseña."
+        err.message || "Credenciales incorrectas. Verifica tu número de cédula y PIN de acceso (por defecto son los últimos 4 dígitos de tu documento)."
       );
     } finally {
       setIsLoading(false);
@@ -81,37 +82,54 @@ export default function LoginScreen() {
         <View className="bg-slate-800/90 rounded-3xl p-6 border border-slate-700/80 shadow-2xl">
           <Text className="text-white text-lg font-bold mb-1">Iniciar Sesión</Text>
           <Text className="text-slate-400 text-xs mb-6">
-            Ingresa con tu documento de identidad registrado ante la JAC.
+            Ingresa con tu documento de identidad y tu PIN asignado por tu JAC.
           </Text>
 
           <View className="space-y-4">
             <View>
               <Text className="text-slate-300 text-xs font-semibold mb-1.5 uppercase tracking-wider">
-                Cédula de Ciudadanía o Correo
+                Cédula de Ciudadanía
               </Text>
               <TextInput
                 value={identifier}
                 onChangeText={setIdentifier}
                 placeholder="Ej. 1098123456"
                 placeholderTextColor="#64748b"
-                autoCapitalize="none"
-                keyboardType="email-address"
+                keyboardType="numeric"
                 className="bg-slate-900/90 border border-slate-700 rounded-xl px-4 py-3 text-white text-base"
               />
             </View>
 
             <View className="mt-4">
-              <Text className="text-slate-300 text-xs font-semibold mb-1.5 uppercase tracking-wider">
-                Contraseña
-              </Text>
-              <TextInput
-                value={password}
-                onChangeText={setPassword}
-                placeholder="••••••••"
-                placeholderTextColor="#64748b"
-                secureTextEntry
-                className="bg-slate-900/90 border border-slate-700 rounded-xl px-4 py-3 text-white text-base"
-              />
+              <View className="flex-row items-center justify-between mb-1.5">
+                <Text className="text-slate-300 text-xs font-semibold uppercase tracking-wider">
+                  PIN de Acceso Móvil
+                </Text>
+                <Text className="text-emerald-400 text-[11px]">
+                  (Últimos 4 dígitos de tu cédula)
+                </Text>
+              </View>
+              <View className="flex-row items-center bg-slate-900/90 border border-slate-700 rounded-xl px-4 py-1">
+                <TextInput
+                  value={password}
+                  onChangeText={setPassword}
+                  placeholder="Ej. 3456"
+                  placeholderTextColor="#64748b"
+                  keyboardType="numeric"
+                  secureTextEntry={!showPin}
+                  className="flex-1 py-2 text-white text-base"
+                />
+                <TouchableOpacity
+                  onPress={() => setShowPin(!showPin)}
+                  className="p-2 ml-1"
+                >
+                  {showPin ? (
+                    <EyeOff color="#94a3b8" size={20} />
+                  ) : (
+                    <Eye color="#94a3b8" size={20} />
+                  )}
+                </TouchableOpacity>
+              </View>
             </View>
 
             <TouchableOpacity
@@ -138,10 +156,8 @@ export default function LoginScreen() {
             onPress={() => router.push("/(auth)/register")}
             className="flex-row items-center mt-2 px-4 py-2 rounded-xl bg-slate-800 border border-slate-700 active:bg-slate-700"
           >
-            <UserPlus color="#34d399" size={16} />
-            <Text className="text-emerald-400 font-semibold text-sm ml-2">
-              Solicitar Afiliación a mi Vereda
-            </Text>
+            <UserPlus color="#10b981" size={18} />
+            <Text className="text-emerald-400 font-bold text-sm ml-2">Radicar Afiliación Ciudadana</Text>
           </TouchableOpacity>
         </View>
       </ScrollView>

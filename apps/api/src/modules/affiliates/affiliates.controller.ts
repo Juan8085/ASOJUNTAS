@@ -182,5 +182,26 @@ export class AffiliatesController {
   ) {
     return this.affiliatesService.updateStatus(jacId, id, body);
   }
+
+  @Patch("book/:id/reset-pin")
+  @Roles(
+    UserRole.SUPER_ADMIN,
+    UserRole.JAC_ADMIN,
+    UserRole.JAC_PRESIDENT,
+    UserRole.JAC_SECRETARY,
+    UserRole.JAC_TREASURER
+  )
+  @UseGuards(TenantGuard, RolesGuard)
+  @ApiOperation({
+    summary: "Restablecer PIN de acceso móvil del afiliado",
+    description: "Permite a los directivos restablecer o asignar un nuevo PIN de 4 dígitos para que el afiliado ingrese a la app móvil",
+  })
+  async resetAffiliatePin(
+    @CurrentTenant() jacId: string,
+    @Param("id") id: string,
+    @Body() body?: { pin?: string }
+  ) {
+    return this.affiliatesService.resetAffiliatePin(jacId, id, body?.pin);
+  }
 }
 

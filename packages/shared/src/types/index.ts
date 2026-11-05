@@ -8,6 +8,7 @@ export * from "../schemas";
 export type LoginInput = z.infer<typeof schemas.LoginSchema>;
 export type RegisterCitizenInput = z.infer<typeof schemas.RegisterCitizenSchema>;
 export type RefreshTokenInput = z.infer<typeof schemas.RefreshTokenSchema>;
+export type ResetAffiliatePinInput = z.infer<typeof schemas.ResetAffiliatePinSchema>;
 
 export type CreateJacInput = z.infer<typeof schemas.CreateJacSchema>;
 export type UpdateJacSettingsInput = z.infer<typeof schemas.UpdateJacSettingsSchema>;

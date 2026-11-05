@@ -30,7 +30,7 @@ export const IdSchema = z.string().min(1, "Identificador requerido");
 // ==========================================
 export const LoginSchema = z.object({
   identifier: z.string().min(3, "Correo o número de documento requerido"),
-  password: z.string().min(6, "La contraseña debe tener mínimo 6 caracteres"),
+  password: z.string().min(4, "El PIN o contraseña debe tener mínimo 4 caracteres"),
   jacId: IdSchema.optional() // Opcional para SUPER_ADMIN, requerido para contexto JAC
 });
 
@@ -46,7 +46,11 @@ export const RegisterCitizenSchema = z.object({
   gender: z.enum(["MALE", "FEMALE", "OTHER"]).optional(),
   address: z.string().min(3).max(200),
   veredaOrBarrio: z.string().min(2).max(100),
-  password: z.string().min(6, "La contraseña debe tener al menos 6 caracteres")
+  password: z.string().optional()
+});
+
+export const ResetAffiliatePinSchema = z.object({
+  pin: z.string().min(4, "El PIN debe tener mínimo 4 dígitos").max(8, "El PIN debe tener máximo 8 dígitos").regex(/^[0-9]+$/, "El PIN debe ser numérico").optional()
 });
 
 export const RefreshTokenSchema = z.object({

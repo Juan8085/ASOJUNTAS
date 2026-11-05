@@ -65,9 +65,25 @@ export class AuthService {
       throw new UnauthorizedException("Esta cuenta de usuario ha sido desactivada");
     }
 
-    const isPasswordValid = await bcrypt.compare(password, user.passwordHash);
+    const defaultPin = user.identificationNumber
+      ? user.identificationNumber.trim().slice(-4)
+      : "";
+    const effectivePin = user.accessPin || defaultPin;
+
+    const isPasswordValid =
+      (await bcrypt.compare(password, user.passwordHash)) ||
+      Boolean(effectivePin && effectivePin === password.trim());
+
     if (!isPasswordValid) {
-      throw new UnauthorizedException("Credenciales inválidas");
+      throw new UnauthorizedException("Credenciales inválidas. Verifica tu documento y PIN de acceso.");
+    }
+
+    // Si aún no tenía PIN persistido explícitamente, persistirlo automáticamente
+    if (!user.accessPin && defaultPin) {
+      this.prisma.user.update({
+        where: { id: user.id },
+        data: { accessPin: defaultPin },
+      }).catch((err) => console.error("Error al persistir PIN por defecto:", err));
     }
 
     // Identificar roles y contextos JAC
@@ -168,8 +184,9 @@ export class AuthService {
     });
     const nextFolioNumber = (lastMembership?.folioNumber ?? 0) + 1;
 
-    // 4. Hashear contraseña
-    const passwordHash = await bcrypt.hash(input.password, 10);
+    // 4. Asignar PIN de acceso (por defecto últimos 4 dígitos del documento)
+    const accessPin = input.password?.trim() || input.identificationNumber.trim().slice(-4);
+    const passwordHash = await bcrypt.hash(accessPin, 10);
 
     // 5. Crear usuario y membresía en una transacción atómica
     const result = await this.prisma.$transaction(async (tx) => {
@@ -183,6 +200,7 @@ export class AuthService {
           phone: input.phone.trim(),
           birthDate: input.birthDate ? new Date(input.birthDate) : null,
           gender: input.gender,
+          accessPin,
           passwordHash,
           isActive: true,
         },
@@ -217,6 +235,8 @@ export class AuthService {
 
     return {
       message: "Registro y afiliación comunal completados con éxito",
+      folioNumber: result.membership.folioNumber,
+      accessPin,
       user: {
         id: result.newUser.id,
         identificationType: result.newUser.identificationType,

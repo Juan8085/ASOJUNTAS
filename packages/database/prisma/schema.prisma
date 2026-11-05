@@ -313,6 +313,7 @@ model User {
   gender               String?
   avatarUrl            String?               @map("avatar_url")
   passwordHash         String                @map("password_hash")
+  accessPin            String?               @map("access_pin")
   latitude             Float?
   longitude            Float?
   isEmailVerified      Boolean               @default(false) @map("is_email_verified")
