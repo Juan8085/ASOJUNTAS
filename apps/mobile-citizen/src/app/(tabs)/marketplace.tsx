@@ -9,11 +9,12 @@ import {
   ActivityIndicator,
   Alert,
   RefreshControl,
+  Linking,
 } from "react-native";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiClient } from "../../lib/api-client";
 import { useAuthStore } from "../../lib/auth-store";
-import { MarketUnit, DeliveryMethod } from "@conectajac/shared";
+import { MarketUnit, DeliveryMethod, PaymentMethod } from "@conectajac/shared";
 import {
   ShoppingBag,
   Plus,
@@ -22,10 +23,14 @@ import {
   Package,
   MapPin,
   X,
+  ClipboardList,
+  MessageCircle,
+  Clock,
 } from "lucide-react-native";
 
 interface ProductItem {
   id: string;
+  producerId?: string;
   title?: string;
   name?: string;
   description?: string;
@@ -36,6 +41,7 @@ interface ProductItem {
   stock?: number;
   images?: string[];
   producer?: {
+    id?: string;
     farmName?: string;
     veredaName?: string;
     vereda?: string;
@@ -54,6 +60,7 @@ export default function MarketplaceScreen() {
 
   const [search, setSearch] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string>("ALL");
+  const [mainTab, setMainTab] = useState<"CATALOG" | "MY_ORDERS">("CATALOG");
   const [orderModalProduct, setOrderModalProduct] = useState<ProductItem | null>(null);
   const [orderQuantity, setOrderQuantity] = useState("1");
   const [orderDelivery, setOrderDelivery] = useState<DeliveryMethod>(DeliveryMethod.PICKUP_AT_FARM);
@@ -94,16 +101,60 @@ export default function MarketplaceScreen() {
 
   const products = productsData?.data || [];
 
+  // Query for buyer's orders
+  const {
+    data: myOrders = [],
+    isLoading: loadingOrders,
+    refetch: refetchOrders,
+  } = useQuery<any[]>({
+    queryKey: ["my-buyer-orders", user?.id],
+    queryFn: () => apiClient.get("/marketplace/orders/buyer"),
+    enabled: !!user?.id,
+  });
+
   // Mutation to create order
   const orderMutation = useMutation({
-    mutationFn: (payload: any) => apiClient.post("/marketplace/orders", payload),
-    onSuccess: () => {
+    mutationFn: (payload: any) => apiClient.post<any>("/marketplace/orders", payload),
+    onSuccess: (res: any) => {
       queryClient.invalidateQueries({ queryKey: ["marketplace-products"] });
+      queryClient.invalidateQueries({ queryKey: ["my-buyer-orders"] });
+
+      const targetProduct = orderModalProduct;
+      const whatsappUrl = res?.producer?.whatsappUrl;
+      const farmerName =
+        res?.producer?.name ||
+        targetProduct?.producer?.farmName ||
+        "el productor campesino";
+
       setOrderModalProduct(null);
-      Alert.alert(
-        "¡Pedido Registrado con Éxito!",
-        "El productor campesino ha recibido tu solicitud. Te contactará para coordinar la entrega en la vereda."
-      );
+      setOrderQuantity("1");
+      setOrderNotes("");
+
+      if (whatsappUrl) {
+        Alert.alert(
+          "¡Encargo Confirmado!",
+          `Tu encargo de ${targetProduct?.title || targetProduct?.name || "cosecha"} fue enviado a ${farmerName} y registrado en el sistema comunal.\n\n¿Deseas abrir WhatsApp para enviar el detalle al campesino y coordinar la entrega?`,
+          [
+            { text: "Ver en la App", style: "cancel" },
+            {
+              text: "Abrir WhatsApp",
+              onPress: () => {
+                Linking.openURL(whatsappUrl).catch(() => {
+                  Alert.alert(
+                    "WhatsApp",
+                    "No fue posible abrir WhatsApp. Comunícate al número del campesino."
+                  );
+                });
+              },
+            },
+          ]
+        );
+      } else {
+        Alert.alert(
+          "¡Encargo Confirmado!",
+          `El productor ${farmerName} ha recibido tu encargo y el stock fue actualizado. Te contactará pronto para coordinar la entrega en la vereda.`
+        );
+      }
     },
     onError: (err: any) => {
       Alert.alert("Error al solicitar", err.message || "No fue posible procesar la orden.");
@@ -139,7 +190,19 @@ export default function MarketplaceScreen() {
       return;
     }
 
+    const availableStock =
+      orderModalProduct.stockQuantity ?? (orderModalProduct as any).stock ?? 999;
+    if (qty > availableStock) {
+      Alert.alert(
+        "Stock insuficiente",
+        `Solo hay disponibles ${availableStock} ${orderModalProduct.unit}. Por favor ajusta la cantidad.`
+      );
+      return;
+    }
+
     orderMutation.mutate({
+      productId: orderModalProduct.id,
+      producerId: orderModalProduct.producerId || orderModalProduct.producer?.id,
       items: [
         {
           productId: orderModalProduct.id,
@@ -148,6 +211,10 @@ export default function MarketplaceScreen() {
       ],
       deliveryMethod: orderDelivery,
       deliveryNotes: orderNotes.trim() || undefined,
+      customerNotes: orderNotes.trim() || undefined,
+      paymentMethod: PaymentMethod.CASH,
+      buyerName: user ? `${user.firstName} ${user.lastName}`.trim() : undefined,
+      buyerPhone: user?.phone || undefined,
     });
   };
 
@@ -175,120 +242,267 @@ export default function MarketplaceScreen() {
 
   return (
     <View className="flex-1 bg-slate-50">
-      {/* Search & Categories Bar */}
-      <View className="bg-white px-4 pt-3 pb-2 border-b border-slate-200">
-        <View className="flex-row items-center bg-slate-100 rounded-xl px-3 py-2 mb-3">
-          <Search color="#64748b" size={18} />
-          <TextInput
-            value={search}
-            onChangeText={setSearch}
-            placeholder="Buscar cosechas, café, queso, plátano..."
-            className="flex-1 ml-2 text-slate-800 text-sm"
-          />
-        </View>
+      {/* Header Tabs: Catálogo vs Mis Encargos */}
+      <View className="bg-white px-4 pt-3 pb-2 border-b border-slate-100 flex-row space-x-2">
+        <TouchableOpacity
+          onPress={() => setMainTab("CATALOG")}
+          className={`flex-1 py-2 rounded-xl flex-row items-center justify-center space-x-1.5 ${
+            mainTab === "CATALOG" ? "bg-amber-600" : "bg-slate-100"
+          }`}
+        >
+          <ShoppingBag color={mainTab === "CATALOG" ? "#ffffff" : "#64748b"} size={16} />
+          <Text
+            className={`text-xs font-bold ml-1.5 ${
+              mainTab === "CATALOG" ? "text-white" : "text-slate-600"
+            }`}
+          >
+            Cosechas del Campo
+          </Text>
+        </TouchableOpacity>
 
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} className="flex-row pb-1">
-          {categories.map((c) => {
-            const active = selectedCategory === c.id;
-            return (
-              <TouchableOpacity
-                key={c.id}
-                onPress={() => setSelectedCategory(c.id)}
-                className={`mr-2 px-3 py-1.5 rounded-full ${
-                  active ? "bg-amber-600" : "bg-slate-100"
-                }`}
-              >
-                <Text
-                  className={`text-xs font-semibold ${
-                    active ? "text-white" : "text-slate-600"
-                  }`}
-                >
-                  {c.label}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </ScrollView>
+        <TouchableOpacity
+          onPress={() => setMainTab("MY_ORDERS")}
+          className={`flex-1 py-2 rounded-xl flex-row items-center justify-center space-x-1.5 ml-2 ${
+            mainTab === "MY_ORDERS" ? "bg-amber-600" : "bg-slate-100"
+          }`}
+        >
+          <ClipboardList color={mainTab === "MY_ORDERS" ? "#ffffff" : "#64748b"} size={16} />
+          <Text
+            className={`text-xs font-bold ml-1.5 ${
+              mainTab === "MY_ORDERS" ? "text-white" : "text-slate-600"
+            }`}
+          >
+            Mis Encargos ({myOrders.length})
+          </Text>
+        </TouchableOpacity>
       </View>
 
-      {/* Product List */}
-      <ScrollView
-        className="flex-1 px-4 py-4"
-        contentContainerStyle={{ paddingBottom: 60 }}
-        refreshControl={<RefreshControl refreshing={isLoading} onRefresh={refetch} />}
-      >
-        {isLoading ? (
-          <ActivityIndicator color="#d97706" className="py-8" />
-        ) : products.length === 0 ? (
-          <View className="bg-white rounded-2xl p-8 border border-slate-200/80 items-center text-center mt-4">
-            <ShoppingBag color="#d97706" size={40} />
-            <Text className="text-slate-800 font-bold text-base mt-3">
-              No hay cosechas publicadas aún
-            </Text>
-            <Text className="text-slate-400 text-xs text-center mt-1 leading-relaxed">
-              Sé el primer productor de la vereda en publicar café, plátano, cítricos o lácteos.
-            </Text>
+      {mainTab === "MY_ORDERS" ? (
+        <ScrollView
+          className="flex-1 px-4 py-4"
+          contentContainerStyle={{ paddingBottom: 60 }}
+          refreshControl={<RefreshControl refreshing={loadingOrders} onRefresh={refetchOrders} />}
+        >
+          {loadingOrders ? (
+            <ActivityIndicator color="#d97706" className="py-8" />
+          ) : myOrders.length === 0 ? (
+            <View className="bg-white rounded-2xl p-8 border border-slate-200/80 items-center text-center mt-4">
+              <ClipboardList color="#d97706" size={40} />
+              <Text className="text-slate-800 font-bold text-base mt-3">
+                No tienes encargos registrados
+              </Text>
+              <Text className="text-slate-400 text-xs text-center mt-1 leading-relaxed">
+                Cuando encargues cosechas campesinas a tus vecinos de la vereda, aparecerán aquí con su estado y canal de contacto directo.
+              </Text>
+            </View>
+          ) : (
+            <View className="space-y-3 pb-20">
+              {myOrders.map((ord: any) => {
+                const rawPhone = (ord.producer?.whatsappContact || "").replace(/\D/g, "");
+                const waUrl = rawPhone ? `https://wa.me/57${rawPhone.slice(-10)}` : null;
+
+                const statusLabel =
+                  ord.status === "PENDING_CONFIRMATION"
+                    ? "⏳ Pendiente"
+                    : ord.status === "CONFIRMED"
+                    ? "✅ Confirmado"
+                    : ord.status === "DELIVERED"
+                    ? "🎉 Entregado"
+                    : "Activo";
+
+                const statusColor =
+                  ord.status === "DELIVERED"
+                    ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                    : ord.status === "CONFIRMED"
+                    ? "bg-blue-50 text-blue-700 border-blue-200"
+                    : "bg-amber-50 text-amber-700 border-amber-200";
+
+                return (
+                  <View
+                    key={ord.id}
+                    className="bg-white rounded-2xl border border-slate-200/80 p-4 shadow-sm mb-3"
+                  >
+                    <View className="flex-row justify-between items-start mb-2">
+                      <View>
+                        <Text className="text-xs font-black text-slate-800">
+                          Pedido #{ord.orderNumber}
+                        </Text>
+                        <Text className="text-[11px] text-slate-400 mt-0.5">
+                          {new Date(ord.createdAt).toLocaleDateString("es-CO", {
+                            day: "numeric",
+                            month: "short",
+                            year: "numeric",
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })}
+                        </Text>
+                      </View>
+                      <View className={`px-2 py-0.5 rounded-full border ${statusColor}`}>
+                        <Text className="text-[10px] font-bold">{statusLabel}</Text>
+                      </View>
+                    </View>
+
+                    <View className="bg-slate-50 rounded-xl p-3 my-2 border border-slate-100">
+                      <Text className="text-xs font-bold text-slate-700 mb-1">
+                        🌾 {ord.producer?.farmName || "Finca Campesina"} ({ord.producer?.veredaName || "Vereda"})
+                      </Text>
+                      {ord.items?.map((it: any) => (
+                        <View key={it.id} className="flex-row justify-between py-0.5">
+                          <Text className="text-xs text-slate-600">
+                            • {it.quantity}x {it.productTitle}
+                          </Text>
+                          <Text className="text-xs font-bold text-slate-800">
+                            ${Number(it.subtotal).toLocaleString("es-CO")}
+                          </Text>
+                        </View>
+                      ))}
+                      <View className="border-t border-slate-200/60 mt-2 pt-1 flex-row justify-between">
+                        <Text className="text-xs font-extrabold text-slate-900">Total:</Text>
+                        <Text className="text-xs font-black text-emerald-700">
+                          ${Number(ord.totalAmount).toLocaleString("es-CO")} COP
+                        </Text>
+                      </View>
+                    </View>
+
+                    <View className="flex-row justify-between items-center mt-1">
+                      <Text className="text-[11px] text-slate-500">
+                        {ord.deliveryMethod === "PICKUP_AT_FARM" ? "🏡 Recoger en finca" : "🚚 Entrega en vereda"}
+                      </Text>
+
+                      {waUrl && (
+                        <TouchableOpacity
+                          onPress={() => Linking.openURL(waUrl)}
+                          className="bg-emerald-600 active:bg-emerald-700 px-3 py-1.5 rounded-xl flex-row items-center"
+                        >
+                          <MessageCircle color="#ffffff" size={14} />
+                          <Text className="text-white font-bold text-xs ml-1">WhatsApp</Text>
+                        </TouchableOpacity>
+                      )}
+                    </View>
+                  </View>
+                );
+              })}
+            </View>
+          )}
+        </ScrollView>
+      ) : (
+        <>
+          {/* Search & Categories Bar */}
+          <View className="bg-white px-4 pt-3 pb-2 border-b border-slate-200">
+            <View className="flex-row items-center bg-slate-100 rounded-xl px-3 py-2 mb-3">
+              <Search color="#64748b" size={18} />
+              <TextInput
+                value={search}
+                onChangeText={setSearch}
+                placeholder="Buscar cosechas, café, queso, plátano..."
+                className="flex-1 ml-2 text-slate-800 text-sm"
+              />
+            </View>
+
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} className="flex-row pb-1">
+              {categories.map((c) => {
+                const active = selectedCategory === c.id;
+                return (
+                  <TouchableOpacity
+                    key={c.id}
+                    onPress={() => setSelectedCategory(c.id)}
+                    className={`mr-2 px-3 py-1.5 rounded-full ${
+                      active ? "bg-amber-600" : "bg-slate-100"
+                    }`}
+                  >
+                    <Text
+                      className={`text-xs font-semibold ${
+                        active ? "text-white" : "text-slate-600"
+                      }`}
+                    >
+                      {c.label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
           </View>
-        ) : (
-          <View className="space-y-3 pb-20">
-            {products.map((item) => (
-              <View
-                key={item.id}
-                className="bg-white rounded-2xl border border-slate-200/80 p-4 shadow-sm flex-row justify-between items-center mb-3"
-              >
-                <View className="flex-1 mr-3">
-                  <View className="flex-row items-center space-x-1.5 mb-1">
-                    <Text className="text-amber-700 bg-amber-50 text-[10px] font-bold uppercase px-2 py-0.5 rounded-md">
-                      {item.unit}
-                    </Text>
-                    <Text className="text-slate-400 text-xs">
-                      • Disp: {item.stockQuantity ?? item.stock ?? 1} {item.unit.toLowerCase()}s
-                    </Text>
-                  </View>
-                  <Text className="text-base font-bold text-slate-900">{item.title || item.name}</Text>
-                  {item.description ? (
-                    <Text className="text-xs text-slate-500 mt-0.5" numberOfLines={2}>
-                      {item.description}
-                    </Text>
-                  ) : null}
 
-                  <View className="flex-row items-center mt-2 space-x-1">
-                    <MapPin color="#94a3b8" size={13} />
-                    <Text className="text-[11px] text-slate-400">
-                      {item.producer?.farmName || "Finca Campesina"} ({item.producer?.veredaName || item.producer?.vereda || "Vereda"})
-                    </Text>
-                  </View>
-
-                  <Text className="text-emerald-700 font-black text-base mt-1.5">
-                    ${item.price.toLocaleString("es-CO")}{" "}
-                    <Text className="text-xs text-slate-400 font-normal">/ {item.unit}</Text>
-                  </Text>
-                </View>
-
-                <TouchableOpacity
-                  onPress={() => {
-                    setOrderModalProduct(item);
-                    setOrderQuantity("1");
-                  }}
-                  className="bg-amber-600 active:bg-amber-700 px-4 py-2.5 rounded-xl flex-row items-center space-x-1 shadow-sm"
-                >
-                  <ShoppingBag color="#ffffff" size={16} />
-                  <Text className="text-white font-bold text-xs ml-1">Pedir</Text>
-                </TouchableOpacity>
+          {/* Product List */}
+          <ScrollView
+            className="flex-1 px-4 py-4"
+            contentContainerStyle={{ paddingBottom: 60 }}
+            refreshControl={<RefreshControl refreshing={isLoading} onRefresh={refetch} />}
+          >
+            {isLoading ? (
+              <ActivityIndicator color="#d97706" className="py-8" />
+            ) : products.length === 0 ? (
+              <View className="bg-white rounded-2xl p-8 border border-slate-200/80 items-center text-center mt-4">
+                <ShoppingBag color="#d97706" size={40} />
+                <Text className="text-slate-800 font-bold text-base mt-3">
+                  No hay cosechas publicadas aún
+                </Text>
+                <Text className="text-slate-400 text-xs text-center mt-1 leading-relaxed">
+                  Sé el primer productor de la vereda en publicar café, plátano, cítricos o lácteos.
+                </Text>
               </View>
-            ))}
-          </View>
-        )}
-      </ScrollView>
+            ) : (
+              <View className="space-y-3 pb-20">
+                {products.map((item) => (
+                  <View
+                    key={item.id}
+                    className="bg-white rounded-2xl border border-slate-200/80 p-4 shadow-sm flex-row justify-between items-center mb-3"
+                  >
+                    <View className="flex-1 mr-3">
+                      <View className="flex-row items-center space-x-1.5 mb-1">
+                        <Text className="text-amber-700 bg-amber-50 text-[10px] font-bold uppercase px-2 py-0.5 rounded-md">
+                          {item.unit}
+                        </Text>
+                        <Text className="text-slate-400 text-xs">
+                          • Disp: {item.stockQuantity ?? item.stock ?? 1} {item.unit.toLowerCase()}s
+                        </Text>
+                      </View>
+                      <Text className="text-base font-bold text-slate-900">{item.title || item.name}</Text>
+                      {item.description ? (
+                        <Text className="text-xs text-slate-500 mt-0.5" numberOfLines={2}>
+                          {item.description}
+                        </Text>
+                      ) : null}
 
-      {/* Floating Action Button: Publish Harvest */}
-      <TouchableOpacity
-        onPress={() => setPublishModalOpen(true)}
-        className="absolute bottom-6 right-6 bg-emerald-600 active:bg-emerald-700 rounded-full px-5 py-3.5 flex-row items-center shadow-lg shadow-emerald-600/40"
-      >
-        <Plus color="#ffffff" size={20} />
-        <Text className="text-white font-bold text-sm ml-2">Publicar Cosecha</Text>
-      </TouchableOpacity>
+                      <View className="flex-row items-center mt-2 space-x-1">
+                        <MapPin color="#94a3b8" size={13} />
+                        <Text className="text-[11px] text-slate-400">
+                          {item.producer?.farmName || "Finca Campesina"} ({item.producer?.veredaName || item.producer?.vereda || "Vereda"})
+                        </Text>
+                      </View>
+
+                      <Text className="text-emerald-700 font-black text-base mt-1.5">
+                        ${item.price.toLocaleString("es-CO")}{" "}
+                        <Text className="text-xs text-slate-400 font-normal">/ {item.unit}</Text>
+                      </Text>
+                    </View>
+
+                    <TouchableOpacity
+                      onPress={() => {
+                        setOrderModalProduct(item);
+                        setOrderQuantity("1");
+                      }}
+                      className="bg-amber-600 active:bg-amber-700 px-4 py-2.5 rounded-xl flex-row items-center space-x-1 shadow-sm"
+                    >
+                      <ShoppingBag color="#ffffff" size={16} />
+                      <Text className="text-white font-bold text-xs ml-1">Pedir</Text>
+                    </TouchableOpacity>
+                  </View>
+                ))}
+              </View>
+            )}
+          </ScrollView>
+
+          {/* Floating Action Button: Publish Harvest */}
+          <TouchableOpacity
+            onPress={() => setPublishModalOpen(true)}
+            className="absolute bottom-6 right-6 bg-emerald-600 active:bg-emerald-700 rounded-full px-5 py-3.5 flex-row items-center shadow-lg shadow-emerald-600/40"
+          >
+            <Plus color="#ffffff" size={20} />
+            <Text className="text-white font-bold text-sm ml-2">Publicar Cosecha</Text>
+          </TouchableOpacity>
+        </>
+      )}
 
       {/* Order Modal */}
       <Modal visible={!!orderModalProduct} animationType="slide" transparent>
@@ -296,7 +510,7 @@ export default function MarketplaceScreen() {
           <View className="bg-white rounded-t-3xl p-6 space-y-4">
             <View className="flex-row justify-between items-center pb-2 border-b border-slate-100">
               <Text className="text-lg font-bold text-slate-900">
-                Encargar {orderModalProduct?.name}
+                Encargar {orderModalProduct?.title || orderModalProduct?.name}
               </Text>
               <TouchableOpacity onPress={() => setOrderModalProduct(null)}>
                 <X color="#64748b" size={20} />
@@ -313,6 +527,9 @@ export default function MarketplaceScreen() {
                 keyboardType="numeric"
                 className="bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-base font-bold text-slate-900"
               />
+              <Text className="text-xs text-amber-700 font-bold mt-1.5">
+                Total estimado: ${((parseInt(orderQuantity || "0", 10) || 0) * (orderModalProduct?.price || 0)).toLocaleString("es-CO")} COP
+              </Text>
             </View>
 
             <View>

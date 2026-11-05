@@ -250,5 +250,27 @@ export class MarketplaceController {
   ) {
     return this.marketplaceService.deleteProduct(jacId, id);
   }
+
+  @Get("admin/orders")
+  @ApiBearerAuth()
+  @Roles(
+    UserRole.SUPER_ADMIN,
+    UserRole.JAC_ADMIN,
+    UserRole.JAC_PRESIDENT,
+    UserRole.JAC_SECRETARY,
+    UserRole.JAC_TREASURER
+  )
+  @UseGuards(TenantGuard, RolesGuard)
+  @ApiOperation({
+    summary: "Listar pedidos del mercado campesino de la JAC (Directivos)",
+    description: "Permite a los directivos vigilar las transacciones y pedidos del mercado comunal",
+  })
+  async getAdminOrders(
+    @CurrentTenant() jacId: string,
+    @Query("search") search?: string,
+    @Query("status") status?: MarketOrderStatus
+  ) {
+    return this.marketplaceService.getAdminOrders(jacId, { search, status });
+  }
 }
 

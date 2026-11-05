@@ -22,6 +22,9 @@ import {
   Eye,
   X,
   FileSpreadsheet,
+  ClipboardList,
+  Clock,
+  Truck,
 } from "lucide-react";
 import { formatCurrency, formatDate, downloadCsv } from "@/lib/utils";
 
@@ -61,6 +64,7 @@ export default function MarketplaceAdminPage() {
   const queryClient = useQueryClient();
   const { currentJacId } = useAuthStore();
 
+  const [viewTab, setViewTab] = useState<"products" | "orders">("products");
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "active" | "suspended">("all");
   const [selectedProductForDetail, setSelectedProductForDetail] = useState<AdminMarketProduct | null>(null);
@@ -76,6 +80,17 @@ export default function MarketplaceAdminPage() {
       apiClient.get(
         `/marketplace/admin/products?search=${encodeURIComponent(search)}&status=${statusFilter}`
       ),
+    enabled: Boolean(currentJacId),
+  });
+
+  // Consultar pedidos y encargos comunitarios de la JAC activa
+  const {
+    data: adminOrders = [],
+    isLoading: loadingOrders,
+    refetch: refetchOrders,
+  } = useQuery<any[]>({
+    queryKey: ["admin-marketplace-orders", currentJacId],
+    queryFn: () => apiClient.get("/marketplace/admin/orders"),
     enabled: Boolean(currentJacId),
   });
 
@@ -115,6 +130,9 @@ export default function MarketplaceAdminPage() {
   const suspendedProducts = products.filter((p: AdminMarketProduct) => !p.isAvailable).length;
   const uniqueProducers = new Set(products.map((p: AdminMarketProduct) => p.producer?.id)).size;
 
+  const totalOrdersAmount = adminOrders.reduce((acc, o) => acc + (Number(o.totalAmount) || 0), 0);
+  const pendingOrders = adminOrders.filter((o) => o.status === "PENDING_CONFIRMATION").length;
+
   const handleExportExcel = () => {
     if (products.length === 0) return;
     const headers = [
@@ -149,7 +167,40 @@ export default function MarketplaceAdminPage() {
       p.producer?.whatsappContact || "",
       formatDate(p.createdAt),
     ]);
-    downloadCsv("Catalogo_Mercado_Campesino_JAC", headers, rows);
+    downloadCsv("Catalogo_Mercado_Campesino_JAC.csv", headers, rows);
+  };
+
+  const handleExportOrdersExcel = () => {
+    if (adminOrders.length === 0) return;
+    const headers = [
+      "Pedido #",
+      "Fecha",
+      "Comprador",
+      "Teléfono Comprador",
+      "Productor / Campesino",
+      "Finca",
+      "Vereda",
+      "Teléfono Campesino",
+      "Productos / Cosechas",
+      "Valor Total ($ COP)",
+      "Método de Entrega",
+      "Estado",
+    ];
+    const rows = adminOrders.map((o: any) => [
+      o.orderNumber,
+      formatDate(o.createdAt),
+      o.buyerName,
+      o.buyerPhone,
+      `${o.producer?.user?.firstName || ""} ${o.producer?.user?.lastName || ""}`,
+      o.producer?.farmName || "",
+      o.producer?.veredaName || "",
+      o.producer?.whatsappContact || "",
+      o.items?.map((it: any) => `${it.quantity}x ${it.productTitle}`).join("; "),
+      o.totalAmount,
+      o.deliveryMethod === "PICKUP_AT_FARM" ? "Recoger en finca" : "Entrega en vereda",
+      o.status,
+    ]);
+    downloadCsv("Libro_Encargos_Mercado_Campesino.csv", headers, rows);
   };
 
   return (
@@ -171,18 +222,33 @@ export default function MarketplaceAdminPage() {
         </div>
 
         <div className="flex items-center gap-2">
+          {viewTab === "products" ? (
+            <button
+              type="button"
+              onClick={handleExportExcel}
+              disabled={products.length === 0}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold border border-slate-200 shadow-sm transition disabled:opacity-50"
+            >
+              <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
+              <span>Exportar Catálogo</span>
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={handleExportOrdersExcel}
+              disabled={adminOrders.length === 0}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold border border-slate-200 shadow-sm transition disabled:opacity-50"
+            >
+              <FileSpreadsheet className="w-4 h-4 text-amber-600" />
+              <span>Exportar Encargos</span>
+            </button>
+          )}
           <button
             type="button"
-            onClick={handleExportExcel}
-            disabled={products.length === 0}
-            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold border border-slate-200 shadow-sm transition disabled:opacity-50"
-          >
-            <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
-            <span>Exportar Catálogo</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => refetch()}
+            onClick={() => {
+              refetch();
+              refetchOrders();
+            }}
             className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-sm transition"
           >
             <RefreshCw className="w-3.5 h-3.5" />
@@ -216,36 +282,214 @@ export default function MarketplaceAdminPage() {
 
         <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
           <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
-            Activos en Venta
+            Encargos Realizados
           </span>
-          <span className="text-2xl font-black text-emerald-600 mt-1 block">
-            {activeProducts}
+          <span className="text-2xl font-black text-amber-600 mt-1 block">
+            {adminOrders.length}
           </span>
-          <span className="text-[11px] text-emerald-700 mt-0.5 block">Visibles en la App Móvil</span>
+          <span className="text-[11px] text-amber-700 mt-0.5 block">
+            {pendingOrders} por entregar
+          </span>
         </div>
 
         <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
           <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
-            Suspendidos / Moderados
+            Comercio Movilizado
           </span>
-          <span className="text-2xl font-black text-rose-600 mt-1 block">
-            {suspendedProducts}
+          <span className="text-2xl font-black text-emerald-600 mt-1 block">
+            ${totalOrdersAmount.toLocaleString("es-CO")}
           </span>
-          <span className="text-[11px] text-rose-700 mt-0.5 block">Pausados por Directiva</span>
+          <span className="text-[11px] text-emerald-700 mt-0.5 block">Economía campesina veredal</span>
         </div>
 
         <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
           <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
             Productores Veredales
           </span>
-          <span className="text-2xl font-black text-amber-600 mt-1 block">
+          <span className="text-2xl font-black text-slate-800 mt-1 block">
             {uniqueProducers}
           </span>
           <span className="text-[11px] text-slate-500 mt-0.5 block">Socios campesinos activos</span>
         </div>
       </div>
 
-      {/* Filters & Search */}
+      {/* Navigation Tabs */}
+      <div className="flex border-b border-slate-200 gap-6">
+        <button
+          type="button"
+          onClick={() => setViewTab("products")}
+          className={`pb-3 text-sm font-bold flex items-center gap-2 border-b-2 transition ${
+            viewTab === "products"
+              ? "border-emerald-600 text-emerald-600"
+              : "border-transparent text-slate-500 hover:text-slate-800"
+          }`}
+        >
+          <Store className="w-4 h-4" />
+          <span>Catálogo de Cosechas & Productos ({totalProducts})</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setViewTab("orders")}
+          className={`pb-3 text-sm font-bold flex items-center gap-2 border-b-2 transition ${
+            viewTab === "orders"
+              ? "border-amber-600 text-amber-600"
+              : "border-transparent text-slate-500 hover:text-slate-800"
+          }`}
+        >
+          <ClipboardList className="w-4 h-4" />
+          <span>Libro de Encargos & Pedidos Comunales ({adminOrders.length})</span>
+          {pendingOrders > 0 && (
+            <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 text-[10px] font-black">
+              {pendingOrders} por entregar
+            </span>
+          )}
+        </button>
+      </div>
+
+      {viewTab === "orders" ? (
+        /* Orders View */
+        <div className="bg-white rounded-2xl border border-slate-200/80 overflow-hidden shadow-sm">
+          <div className="p-4 border-b border-slate-100 flex flex-col sm:flex-row justify-between items-center gap-3">
+            <div>
+              <h3 className="text-sm font-black text-slate-800">
+                Registro de Encargos & Pedidos del Mercado Campesino
+              </h3>
+              <p className="text-xs text-slate-500">
+                Supervisión comunal de solicitudes de cosechas realizadas entre afiliados y productores.
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-bold text-slate-600">
+                Total Acumulado:
+              </span>
+              <span className="px-3 py-1 rounded-xl bg-emerald-50 text-emerald-700 text-xs font-black border border-emerald-200">
+                ${totalOrdersAmount.toLocaleString("es-CO")} COP
+              </span>
+            </div>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse text-xs">
+              <thead>
+                <tr className="bg-slate-50/70 border-b border-slate-200/80 text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                  <th className="py-3 px-4">Pedido # & Fecha</th>
+                  <th className="py-3 px-4">Comprador (Afiliado / Vecino)</th>
+                  <th className="py-3 px-4">Campesino Productor</th>
+                  <th className="py-3 px-4">Cosechas / Productos</th>
+                  <th className="py-3 px-4 text-right">Valor Total ($ COP)</th>
+                  <th className="py-3 px-4 text-center">Entrega</th>
+                  <th className="py-3 px-4 text-center">Estado</th>
+                  <th className="py-3 px-4 text-right">Canal WhatsApp</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 text-slate-700">
+                {adminOrders.length === 0 ? (
+                  <tr>
+                    <td colSpan={8} className="py-12 text-center text-slate-400">
+                      No hay pedidos registrados en el mercado campesino todavía.
+                    </td>
+                  </tr>
+                ) : (
+                  adminOrders.map((ord: any) => {
+                    const farmerPhone = (ord.producer?.whatsappContact || ord.producer?.user?.phone || "").replace(/\D/g, "");
+                    const buyerPhone = (ord.buyerPhone || "").replace(/\D/g, "");
+                    const waFarmerUrl = farmerPhone ? `https://wa.me/57${farmerPhone.slice(-10)}` : null;
+                    const waBuyerUrl = buyerPhone ? `https://wa.me/57${buyerPhone.slice(-10)}` : null;
+
+                    const statusBadge =
+                      ord.status === "PENDING_CONFIRMATION"
+                        ? { label: "Pendiente", bg: "bg-amber-50 text-amber-700 border-amber-200" }
+                        : ord.status === "CONFIRMED"
+                        ? { label: "Confirmado", bg: "bg-blue-50 text-blue-700 border-blue-200" }
+                        : ord.status === "DELIVERED"
+                        ? { label: "Entregado", bg: "bg-emerald-50 text-emerald-700 border-emerald-200" }
+                        : { label: ord.status, bg: "bg-slate-100 text-slate-700 border-slate-200" };
+
+                    return (
+                      <tr key={ord.id} className="hover:bg-slate-50/60 transition">
+                        <td className="py-3 px-4">
+                          <span className="font-extrabold text-slate-900 block">
+                            #{ord.orderNumber}
+                          </span>
+                          <span className="text-[11px] text-slate-400">
+                            {formatDate(ord.createdAt)}
+                          </span>
+                        </td>
+                        <td className="py-3 px-4">
+                          <span className="font-bold text-slate-800 block">{ord.buyerName}</span>
+                          <span className="text-[11px] text-slate-400">{ord.buyerPhone}</span>
+                        </td>
+                        <td className="py-3 px-4">
+                          <span className="font-bold text-slate-800 block">
+                            {ord.producer?.user?.firstName} {ord.producer?.user?.lastName}
+                          </span>
+                          <span className="text-[11px] text-slate-500">
+                            {ord.producer?.farmName} ({ord.producer?.veredaName})
+                          </span>
+                        </td>
+                        <td className="py-3 px-4">
+                          <div className="space-y-0.5">
+                            {ord.items?.map((it: any) => (
+                              <span key={it.id} className="block text-slate-700">
+                                <strong>{it.quantity}x</strong> {it.productTitle}
+                              </span>
+                            ))}
+                          </div>
+                        </td>
+                        <td className="py-3 px-4 text-right">
+                          <span className="font-black text-emerald-700 text-sm">
+                            ${Number(ord.totalAmount).toLocaleString("es-CO")}
+                          </span>
+                        </td>
+                        <td className="py-3 px-4 text-center">
+                          <span className="text-[11px] font-medium text-slate-600 block">
+                            {ord.deliveryMethod === "PICKUP_AT_FARM" ? "Recoger en Finca" : "Entrega en Vereda"}
+                          </span>
+                        </td>
+                        <td className="py-3 px-4 text-center">
+                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border inline-block ${statusBadge.bg}`}>
+                            {statusBadge.label}
+                          </span>
+                        </td>
+                        <td className="py-3 px-4 text-right space-x-1.5">
+                          {waFarmerUrl && (
+                            <a
+                              href={waFarmerUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-[11px] font-bold border border-emerald-200 transition"
+                              title="Contactar Productor por WhatsApp"
+                            >
+                              <MessageCircle className="w-3.5 h-3.5 text-emerald-600" />
+                              <span>Campesino</span>
+                            </a>
+                          )}
+                          {waBuyerUrl && (
+                            <a
+                              href={waBuyerUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 text-[11px] font-bold border border-blue-200 transition"
+                              title="Contactar Comprador por WhatsApp"
+                            >
+                              <MessageCircle className="w-3.5 h-3.5 text-blue-600" />
+                              <span>Comprador</span>
+                            </a>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      ) : (
+        /* Products Catalog View */
+        <>
+          {/* Filters & Search */}
       <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col sm:flex-row gap-3 items-center justify-between">
         <div className="relative w-full sm:w-96">
           <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
@@ -458,6 +702,8 @@ export default function MarketplaceAdminPage() {
           </table>
         </div>
       </div>
-    </div>
+    </>
+  )}
+</div>
   );
 }

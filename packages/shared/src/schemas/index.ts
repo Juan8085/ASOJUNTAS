@@ -276,13 +276,14 @@ export const FilterMarketProductsSchema = z.object({
 });
 
 export const CreateMarketOrderSchema = z.object({
-  producerId: IdSchema,
-  deliveryMethod: z.nativeEnum(DeliveryMethod),
-  deliveryAddress: z.string().min(5).max(255).optional(),
-  buyerName: z.string().min(2).max(100),
-  buyerPhone: z.string().min(7).max(15),
+  producerId: IdSchema.optional(),
+  deliveryMethod: z.nativeEnum(DeliveryMethod).default(DeliveryMethod.PICKUP_AT_FARM),
+  deliveryAddress: z.string().max(255).optional(),
+  buyerName: z.string().max(100).optional(),
+  buyerPhone: z.string().max(25).optional(),
   customerNotes: z.string().max(500).optional(),
-  paymentMethod: z.nativeEnum(PaymentMethod),
+  deliveryNotes: z.string().max(500).optional(),
+  paymentMethod: z.nativeEnum(PaymentMethod).default(PaymentMethod.CASH),
   items: z.array(z.object({
     productId: IdSchema,
     quantity: z.number().positive()

@@ -14,6 +14,8 @@ import {
   UpdateMarketOrderStatusInput,
   MarketOrderStatus,
   MembershipStatus,
+  PaymentMethod,
+  DeliveryMethod,
 } from "@conectajac/shared";
 
 @Injectable()
@@ -361,27 +363,61 @@ export class MarketplaceService {
    * Crear orden de compra comunitaria
    */
   async createOrder(buyerUserId: string | null, input: CreateMarketOrderInput) {
-    const producer = await this.prisma.producerProfile.findUnique({
-      where: { id: input.producerId },
-    });
-
-    if (!producer) {
-      throw new NotFoundException("Productor no encontrado");
-    }
-
-    // 1. Validar productos y calcular totales
+    // 1. Validar productos
     const productIds = input.items.map((i) => i.productId);
     const products = await this.prisma.marketProduct.findMany({
       where: {
         id: { in: productIds },
-        producerId: input.producerId,
         isAvailable: true,
+      },
+      include: {
+        producer: {
+          include: {
+            user: {
+              select: {
+                firstName: true,
+                lastName: true,
+                phone: true,
+              },
+            },
+          },
+        },
       },
     });
 
     if (products.length !== input.items.length) {
-      throw new BadRequestException("Uno o más productos no pertenecen al productor o no están disponibles");
+      throw new BadRequestException("Uno o más productos no pertenecen al catálogo o no están disponibles");
     }
+
+    const firstProduct = products[0];
+    const targetProducerId = input.producerId || firstProduct.producerId;
+    const producer = firstProduct.producer;
+
+    if (!producer) {
+      throw new NotFoundException("Productor no encontrado para los productos solicitados");
+    }
+
+    // Resolver datos del comprador
+    let buyerName = input.buyerName?.trim();
+    let buyerPhone = input.buyerPhone?.trim();
+
+    if (buyerUserId && (!buyerName || !buyerPhone)) {
+      const buyerUser = await this.prisma.user.findUnique({
+        where: { id: buyerUserId },
+      });
+      if (buyerUser) {
+        buyerName = buyerName || `${buyerUser.firstName} ${buyerUser.lastName}`.trim();
+        buyerPhone = buyerPhone || buyerUser.phone;
+      }
+    }
+
+    buyerName = buyerName || "Afiliado Vecino";
+    buyerPhone = buyerPhone || "Sin teléfono registrado";
+
+    const paymentMethod = input.paymentMethod || PaymentMethod.CASH;
+    const deliveryMethod = input.deliveryMethod || DeliveryMethod.PICKUP_AT_FARM;
+    const customerNotes =
+      input.customerNotes?.trim() || (input as any).deliveryNotes?.trim() || null;
 
     // 2. Transacción para decrementar stock y crear orden
     return this.prisma.$transaction(async (tx) => {
@@ -424,17 +460,17 @@ export class MarketplaceService {
       const order = await tx.marketOrder.create({
         data: {
           orderNumber,
-          producerId: input.producerId,
+          producerId: targetProducerId,
           jacId: producer.jacId,
           buyerUserId,
-          buyerName: input.buyerName.trim(),
-          buyerPhone: input.buyerPhone.trim(),
-          deliveryMethod: input.deliveryMethod,
+          buyerName,
+          buyerPhone,
+          deliveryMethod,
           deliveryAddress: input.deliveryAddress?.trim() || null,
           status: MarketOrderStatus.PENDING_CONFIRMATION,
           totalAmount,
-          paymentMethod: input.paymentMethod,
-          customerNotes: input.customerNotes?.trim() || null,
+          paymentMethod,
+          customerNotes,
           items: {
             create: orderItemsData,
           },
@@ -444,10 +480,74 @@ export class MarketplaceService {
         },
       });
 
+      const rawPhone = (producer.whatsappContact || producer.user?.phone || "").replace(/\D/g, "");
+      const producerName =
+        `${producer.user?.firstName || ""} ${producer.user?.lastName || ""}`.trim() || producer.farmName;
+
+      const whatsappMessage = encodeURIComponent(
+        `Hola ${producerName}, te acabo de encargar por el Mercado Campesino ConectaJAC:\n` +
+          `📦 Pedido: #${orderNumber}\n` +
+          `🌾 Cosecha: ${orderItemsData.map((it) => `${it.quantity}x ${it.productTitle}`).join(", ")}\n` +
+          `💰 Total: $${totalAmount.toLocaleString("es-CO")} COP\n` +
+          `📍 Entrega: ${deliveryMethod === DeliveryMethod.PICKUP_AT_FARM ? "Recoger en finca" : "Entrega en vereda"}\n` +
+          `👤 Comprador: ${buyerName} (Tel: ${buyerPhone})`
+      );
+
+      const whatsappUrl = rawPhone
+        ? `https://wa.me/57${rawPhone.slice(-10)}?text=${whatsappMessage}`
+        : null;
+
       return {
         message: "Pedido del mercado campesino registrado exitosamente",
         order,
+        producer: {
+          id: producer.id,
+          farmName: producer.farmName,
+          veredaName: producer.veredaName,
+          name: producerName,
+          phone: producer.whatsappContact || producer.user?.phone,
+          whatsappUrl,
+        },
       };
+    });
+  }
+
+  /**
+   * Listar todos los pedidos de la JAC para los directivos
+   */
+  async getAdminOrders(jacId: string, query?: { search?: string; status?: MarketOrderStatus }) {
+    return this.prisma.marketOrder.findMany({
+      where: {
+        jacId,
+        ...(query?.status && { status: query.status }),
+        ...(query?.search && {
+          OR: [
+            { orderNumber: { contains: query.search, mode: "insensitive" } },
+            { buyerName: { contains: query.search, mode: "insensitive" } },
+            { buyerPhone: { contains: query.search, mode: "insensitive" } },
+          ],
+        }),
+      },
+      include: {
+        items: true,
+        producer: {
+          select: {
+            id: true,
+            farmName: true,
+            veredaName: true,
+            whatsappContact: true,
+            user: {
+              select: {
+                firstName: true,
+                lastName: true,
+                phone: true,
+                identificationNumber: true,
+              },
+            },
+          },
+        },
+      },
+      orderBy: { createdAt: "desc" },
     });
   }
 
@@ -506,7 +606,7 @@ export class MarketplaceService {
     });
 
     if (!producer) {
-      throw new ForbiddenException("No tiene un perfil de productor activo");
+      return [];
     }
 
     return this.prisma.marketOrder.findMany({
