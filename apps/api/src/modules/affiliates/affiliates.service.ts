@@ -523,7 +523,13 @@ export class AffiliatesService {
   async resetAffiliatePin(jacId: string, membershipId: string, newPin?: string) {
     const membership = await this.prisma.jacMembership.findFirst({
       where: { id: membershipId, jacId },
-      include: { user: true },
+      include: {
+        user: {
+          include: {
+            memberships: true,
+          },
+        },
+      },
     });
 
     if (!membership) {
@@ -531,14 +537,25 @@ export class AffiliatesService {
     }
 
     const pinToSet = newPin?.trim() || membership.user.identificationNumber.trim().slice(-4);
-    const passwordHash = await bcrypt.hash(pinToSet, 10);
+
+    // Identificar si el usuario tiene roles directivos (Presidente, Tesorero, Secretaria, Admin)
+    const isDirectivo = membership.user.memberships.some(
+      (m) => m.role !== UserRole.CITIZEN
+    );
+
+    const updateData: { accessPin: string; passwordHash?: string } = {
+      accessPin: pinToSet,
+    };
+
+    // Solo actualizamos el passwordHash si el usuario es ÚNICAMENTE ciudadano común.
+    // Si posee un rol directivo, conservamos intacta su contraseña web para no bloquearlo del panel.
+    if (!isDirectivo) {
+      updateData.passwordHash = await bcrypt.hash(pinToSet, 10);
+    }
 
     await this.prisma.user.update({
       where: { id: membership.userId },
-      data: {
-        accessPin: pinToSet,
-        passwordHash,
-      },
+      data: updateData,
     });
 
     return {
