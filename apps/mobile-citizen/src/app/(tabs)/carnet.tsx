@@ -1,11 +1,15 @@
-import React from "react";
-import { View, Text, ScrollView, TouchableOpacity, Share } from "react-native";
+import React, { useRef, useState } from "react";
+import { View, Text, ScrollView, TouchableOpacity, Share, ActivityIndicator, Alert } from "react-native";
 import QRCode from "react-native-qrcode-svg";
+import { File, Paths } from "expo-file-system";
+import * as Sharing from "expo-sharing";
 import { useAuthStore } from "../../lib/auth-store";
-import { ShieldCheck, Share2, Award, Calendar, MapPin, Hash } from "lucide-react-native";
+import { ShieldCheck, Share2, Award, Calendar, MapPin, Hash, QrCode } from "lucide-react-native";
 
 export default function CarnetScreen() {
   const { user, currentMembership } = useAuthStore();
+  const qrSvgRef = useRef<any>(null);
+  const [isSharing, setIsSharing] = useState(false);
 
   if (!user || !currentMembership) {
     return (
@@ -30,12 +34,40 @@ export default function CarnetScreen() {
   });
 
   const handleShare = async () => {
+    const textMessage = `Carnet de Afiliado JAC - ${user.firstName} ${user.lastName} | Folio #${currentMembership.folioNumber} - ${jac?.name || "JAC"} (Ley 2166 de 2021)`;
+
     try {
-      await Share.share({
-        message: `Carnet de Afiliado JAC - ${user.firstName} ${user.lastName} | Folio #${currentMembership.folioNumber} - ${jac?.name || "JAC"} (Ley 2166 de 2021)`,
-      });
+      setIsSharing(true);
+      if (qrSvgRef.current) {
+        qrSvgRef.current.toDataURL(async (base64Data: string) => {
+          try {
+            const filename = `Carnet_QR_${user.identificationNumber}.png`;
+            const file = new File(Paths.cache, filename);
+            await file.write(base64Data, { encoding: "base64" });
+
+            const isSharingAvailable = await Sharing.isAvailableAsync();
+            if (isSharingAvailable) {
+              await Sharing.shareAsync(file.uri, {
+                mimeType: "image/png",
+                dialogTitle: `Carnet Oficial de Afiliado - ${user.firstName} ${user.lastName}`,
+                UTI: "public.png",
+              });
+            } else {
+              await Share.share({ message: textMessage });
+            }
+          } catch (e) {
+            console.error("Error al compartir QR de carnet:", e);
+            await Share.share({ message: textMessage });
+          } finally {
+            setIsSharing(false);
+          }
+        });
+      } else {
+        await Share.share({ message: textMessage });
+        setIsSharing(false);
+      }
     } catch {
-      // Ignorar cancelaciones
+      setIsSharing(false);
     }
   };
 
@@ -139,6 +171,9 @@ export default function CarnetScreen() {
             size={180}
             color="#0f172a"
             backgroundColor="#ffffff"
+            getRef={(c) => {
+              qrSvgRef.current = c;
+            }}
           />
           <Text className="text-[10px] text-slate-500 font-bold uppercase tracking-wider mt-3">
             Código QR de Verificación de Quórum
@@ -165,10 +200,17 @@ export default function CarnetScreen() {
       {/* Share action */}
       <TouchableOpacity
         onPress={handleShare}
-        className="mt-6 bg-slate-800 border border-slate-700 active:bg-slate-700 rounded-2xl py-3.5 flex-row items-center justify-center space-x-2"
+        disabled={isSharing}
+        className="mt-6 bg-emerald-600 active:bg-emerald-700 rounded-2xl py-3.5 flex-row items-center justify-center space-x-2 shadow-lg shadow-emerald-600/30"
       >
-        <Share2 color="#ffffff" size={18} />
-        <Text className="text-white font-bold text-sm ml-2">Compartir Carnet Oficial</Text>
+        {isSharing ? (
+          <ActivityIndicator color="#ffffff" size="small" />
+        ) : (
+          <>
+            <Share2 color="#ffffff" size={18} />
+            <Text className="text-white font-bold text-sm ml-2">Compartir Carnet Oficial con QR</Text>
+          </>
+        )}
       </TouchableOpacity>
     </ScrollView>
   );

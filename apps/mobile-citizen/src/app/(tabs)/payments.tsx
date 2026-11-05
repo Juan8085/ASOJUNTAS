@@ -7,8 +7,11 @@ import {
   ActivityIndicator,
   Alert,
   RefreshControl,
+  Modal,
+  Linking,
 } from "react-native";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import QRCode from "react-native-qrcode-svg";
 import { apiClient } from "../../lib/api-client";
 import { useAuthStore } from "../../lib/auth-store";
 import {
@@ -18,37 +21,86 @@ import {
   Landmark,
   ShieldCheck,
   ExternalLink,
+  QrCode,
+  Copy,
+  MessageCircle,
+  X,
+  Smartphone,
+  Building,
 } from "lucide-react-native";
 
 interface ObligationItem {
   id: string;
   amount: number;
+  paidAmount?: number;
+  pendingBalance?: number;
   dueDate: string;
-  status: "PENDING" | "PAID" | "OVERDUE" | "EXEMPT";
+  status: "PENDING" | "PAID" | "OVERDUE" | "EXEMPT" | "PARTIALLY_PAID";
   periodName?: string;
-  configuration: {
+  configuration?: {
     name: string;
     type: string;
     amount: number;
   };
 }
 
+interface BankAccountInfo {
+  bankName: string;
+  accountType: string;
+  accountNumber: string;
+  holderName: string;
+  isDigital?: boolean;
+}
+
+interface MyObligationsResponse {
+  data: ObligationItem[];
+  summary: {
+    totalDebt: number;
+    isUpToDate: boolean;
+    overdueCount: number;
+    advanceCount: number;
+  };
+  jac: {
+    id: string;
+    name: string;
+    vereda: string;
+    nit?: string;
+    phone?: string;
+  };
+  bankAccounts: BankAccountInfo[];
+  nequiAccount: BankAccountInfo;
+}
+
 export default function PaymentsScreen() {
   const queryClient = useQueryClient();
   const { user, currentMembership } = useAuthStore();
-  const [payingId, setPayingId] = useState<string | null>(null);
 
-  const { data: obligationsData, isLoading, refetch } = useQuery<{
-    data: ObligationItem[];
-  }>({
-    queryKey: ["my-obligations", currentMembership?.id],
+  const [payingId, setPayingId] = useState<string | null>(null);
+  const [nequiModalOpen, setNequiModalOpen] = useState(false);
+  const [selectedObligationForNequi, setSelectedObligationForNequi] = useState<ObligationItem | null>(null);
+  const [copiedText, setCopiedText] = useState<string | null>(null);
+
+  const { data: responseData, isLoading, refetch } = useQuery<MyObligationsResponse>({
+    queryKey: ["my-obligations", currentMembership?.jacId],
     queryFn: () => apiClient.get("/treasury/my-obligations"),
-    enabled: !!currentMembership?.id,
+    enabled: !!currentMembership?.jacId,
   });
 
-  const obligations = obligationsData?.data || [];
-  const pendingObligations = obligations.filter((o) => o.status === "PENDING" || o.status === "OVERDUE");
-  const totalDebt = pendingObligations.reduce((sum, o) => sum + Number(o.amount), 0);
+  const obligations = responseData?.data || [];
+  const totalDebt = responseData?.summary?.totalDebt ?? 0;
+  const jacInfo = responseData?.jac;
+  const bankAccounts = responseData?.bankAccounts || [];
+  const nequiAccount = responseData?.nequiAccount || {
+    bankName: "Nequi Comunal",
+    accountType: "Billetera Digital",
+    accountNumber: jacInfo?.phone || "3100000000",
+    holderName: jacInfo?.name || "JAC Comunal",
+    isDigital: true,
+  };
+
+  const pendingObligations = obligations.filter(
+    (o) => o.status === "PENDING" || o.status === "OVERDUE" || o.status === "PARTIALLY_PAID"
+  );
 
   // Wompi checkout mutation
   const checkoutMutation = useMutation({
@@ -70,10 +122,55 @@ export default function PaymentsScreen() {
     },
   });
 
-  const handlePay = (obligation: ObligationItem) => {
+  const handlePayOnline = (obligation: ObligationItem) => {
     setPayingId(obligation.id);
     checkoutMutation.mutate(obligation.id);
   };
+
+  const handleCopyAccount = (number: string) => {
+    setCopiedText(number);
+    Alert.alert("Número Copiado", `El número ${number} ha sido copiado.`);
+    setTimeout(() => setCopiedText(null), 3000);
+  };
+
+  const handleOpenNequi = () => {
+    const nequiUrl = "nequi://";
+    Linking.canOpenURL(nequiUrl)
+      .then((supported) => {
+        if (supported) {
+          Linking.openURL(nequiUrl);
+        } else {
+          Linking.openURL("https://www.nequi.com.co");
+        }
+      })
+      .catch(() => {
+        Linking.openURL("https://www.nequi.com.co");
+      });
+  };
+
+  const handleReportPaymentWhatsApp = () => {
+    const amountToReport = selectedObligationForNequi
+      ? selectedObligationForNequi.pendingBalance || selectedObligationForNequi.amount
+      : totalDebt;
+
+    const treasurerPhone = jacInfo?.phone || nequiAccount.accountNumber;
+    const cleanPhone = treasurerPhone.replace(/\D/g, "");
+
+    const msg = `Hola Tesorero(a) de la JAC ${jacInfo?.name || ""}. Te comparto el comprobante de mi pago de cuota comunal por valor de $${Number(
+      amountToReport
+    ).toLocaleString("es-CO")} COP realizado a través de Nequi. Mi nombre es ${user?.firstName} ${
+      user?.lastName
+    }, CC ${user?.identificationNumber}.`;
+
+    Linking.openURL(`https://wa.me/57${cleanPhone}?text=${encodeURIComponent(msg)}`).catch(() => {
+      Alert.alert("WhatsApp", "No se pudo abrir WhatsApp en este dispositivo.");
+    });
+  };
+
+  // QR Payload para Nequi
+  const qrNequiValue = `nequi://send?phone=${nequiAccount.accountNumber}&amount=${
+    selectedObligationForNequi?.pendingBalance || selectedObligationForNequi?.amount || totalDebt || 10000
+  }`;
 
   return (
     <ScrollView
@@ -83,10 +180,8 @@ export default function PaymentsScreen() {
     >
       {/* Treasury Status Banner */}
       <View
-        className={`rounded-3xl p-6 border shadow-sm mb-6 ${
-          totalDebt === 0
-            ? "bg-emerald-600 border-emerald-500"
-            : "bg-slate-900 border-slate-800"
+        className={`rounded-3xl p-6 border shadow-sm mb-5 ${
+          totalDebt === 0 ? "bg-emerald-600 border-emerald-500" : "bg-slate-900 border-slate-800"
         }`}
       >
         <View className="flex-row items-center justify-between mb-3">
@@ -97,7 +192,7 @@ export default function PaymentsScreen() {
                 totalDebt === 0 ? "text-emerald-100" : "text-slate-400"
               }`}
             >
-              Tesorería Comunal
+              Tesorería Comunal • {jacInfo?.name || "JAC"}
             </Text>
           </View>
           <View
@@ -115,12 +210,8 @@ export default function PaymentsScreen() {
           </View>
         </View>
 
-        <Text
-          className={`text-xs ${
-            totalDebt === 0 ? "text-emerald-100" : "text-slate-400"
-          }`}
-        >
-          Total a pagar a la JAC
+        <Text className={`text-xs ${totalDebt === 0 ? "text-emerald-100" : "text-slate-400"}`}>
+          Total por pagar a la JAC
         </Text>
         <Text className="text-white text-3xl font-black mt-1">
           ${totalDebt.toLocaleString("es-CO")} <Text className="text-base font-normal">COP</Text>
@@ -130,20 +221,125 @@ export default function PaymentsScreen() {
           <View className="flex-row items-center mt-3 pt-3 border-t border-emerald-500/50">
             <CheckCircle2 color="#a7f3d0" size={16} />
             <Text className="text-emerald-50 text-xs ml-2 font-medium">
-              Cumples los requisitos para solicitar Certificado de Residencia y Paz y Salvo.
+              Te encuentras al día. Cumples con los requisitos para certificados y votaciones.
             </Text>
           </View>
         ) : (
           <View className="flex-row items-center mt-3 pt-3 border-t border-slate-800">
             <AlertCircle color="#fb7185" size={16} />
             <Text className="text-rose-200 text-xs ml-2 font-medium">
-              Tienes {pendingObligations.length} cuota(s) o multas pendientes de pago.
+              Tienes {pendingObligations.length} cuota(s) u obligaciones pendientes de pago.
             </Text>
           </View>
         )}
       </View>
 
-      {/* Pending Obligations */}
+      {/* NEQUI QUICK PAY CARD */}
+      <View className="bg-purple-950 rounded-3xl p-5 border border-purple-800/60 shadow-md mb-5">
+        <View className="flex-row items-center justify-between mb-3">
+          <View className="flex-row items-center space-x-2">
+            <View className="w-8 h-8 rounded-xl bg-fuchsia-600 items-center justify-center">
+              <QrCode color="#ffffff" size={18} />
+            </View>
+            <View className="ml-2">
+              <Text className="text-white font-black text-base">Pagar con Nequi</Text>
+              <Text className="text-purple-300 text-xs">Escanea el código QR o transfiere al número</Text>
+            </View>
+          </View>
+          <View className="bg-fuchsia-500/20 px-2.5 py-1 rounded-full border border-fuchsia-500/40">
+            <Text className="text-fuchsia-300 font-extrabold text-[10px]">QR ACTIVO</Text>
+          </View>
+        </View>
+
+        <View className="bg-purple-900/60 p-3.5 rounded-2xl border border-purple-700/50 flex-row items-center justify-between mb-4">
+          <View>
+            <Text className="text-purple-300 text-[11px] font-semibold">Número de Cuenta Nequi:</Text>
+            <Text className="text-white font-mono font-black text-lg mt-0.5">
+              📱 {nequiAccount.accountNumber}
+            </Text>
+            <Text className="text-purple-200 text-[11px] mt-0.5">
+              Titular: {nequiAccount.holderName}
+            </Text>
+          </View>
+          <TouchableOpacity
+            onPress={() => handleCopyAccount(nequiAccount.accountNumber)}
+            className="p-2.5 rounded-xl bg-purple-800 active:bg-purple-700 border border-purple-600"
+            title="Copiar número Nequi"
+          >
+            <Copy color="#ffffff" size={18} />
+          </TouchableOpacity>
+        </View>
+
+        <View className="flex-row space-x-2">
+          <TouchableOpacity
+            onPress={() => {
+              setSelectedObligationForNequi(null);
+              setNequiModalOpen(true);
+            }}
+            className="flex-1 bg-fuchsia-600 active:bg-fuchsia-700 py-3 rounded-2xl flex-row items-center justify-center space-x-2 shadow-sm"
+          >
+            <QrCode color="#ffffff" size={18} />
+            <Text className="text-white font-bold text-xs ml-1.5">Ver QR de Nequi</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            onPress={handleOpenNequi}
+            className="flex-1 bg-purple-800 active:bg-purple-700 py-3 rounded-2xl flex-row items-center justify-center space-x-2 border border-purple-600 ml-2 shadow-sm"
+          >
+            <Smartphone color="#ffffff" size={18} />
+            <Text className="text-purple-100 font-bold text-xs ml-1.5">Abrir App Nequi</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      {/* JAC BANK ACCOUNTS SECTION */}
+      <View className="mb-6">
+        <Text className="text-slate-900 font-bold text-base mb-2">
+          Cuentas Bancarias de la JAC
+        </Text>
+        <Text className="text-slate-500 text-xs mb-3">
+          Cuentas oficiales autorizadas para transferencias, consignaciones o corresponsales veredales.
+        </Text>
+
+        {bankAccounts.length === 0 ? (
+          <View className="p-4 bg-white rounded-2xl border border-slate-200">
+            <Text className="text-slate-500 text-xs text-center">
+              La JAC aún no ha registrado cuentas adicionales. Puedes pagar en efectivo ante el tesorero o por Nequi.
+            </Text>
+          </View>
+        ) : (
+          <View className="space-y-3">
+            {bankAccounts.map((acc, index) => (
+              <View
+                key={index}
+                className="bg-white rounded-2xl p-4 border border-slate-200/80 shadow-sm flex-row items-center justify-between mb-2.5"
+              >
+                <View className="flex-1 mr-2">
+                  <View className="flex-row items-center space-x-1.5 mb-1">
+                    <Building color="#059669" size={16} />
+                    <Text className="text-slate-900 font-bold text-xs ml-1">{acc.bankName}</Text>
+                    <Text className="text-slate-400 text-[11px]">• {acc.accountType}</Text>
+                  </View>
+                  <Text className="text-slate-800 font-mono font-bold text-sm">
+                    {acc.accountNumber}
+                  </Text>
+                  <Text className="text-slate-400 text-[11px] mt-0.5">Titular: {acc.holderName}</Text>
+                </View>
+
+                <TouchableOpacity
+                  onPress={() => handleCopyAccount(acc.accountNumber)}
+                  className="px-3 py-2 rounded-xl bg-slate-100 active:bg-slate-200 flex-row items-center space-x-1"
+                >
+                  <Copy color="#64748b" size={14} />
+                  <Text className="text-slate-700 font-bold text-[11px] ml-1">Copiar</Text>
+                </TouchableOpacity>
+              </View>
+            ))}
+          </View>
+        )}
+      </View>
+
+      {/* OBLIGATIONS LIST */}
       <Text className="text-slate-900 font-bold text-base mb-3">
         Cuotas y Obligaciones Veredales
       </Text>
@@ -173,9 +369,7 @@ export default function PaymentsScreen() {
                   <View className="flex-row items-center space-x-1.5 mb-1">
                     <Text
                       className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-md ${
-                        isPaid
-                          ? "bg-emerald-50 text-emerald-800"
-                          : "bg-rose-50 text-rose-800"
+                        isPaid ? "bg-emerald-50 text-emerald-800" : "bg-rose-50 text-rose-800"
                       }`}
                     >
                       {isPaid ? "Pagado" : "Pendiente"}
@@ -193,20 +387,34 @@ export default function PaymentsScreen() {
                 </View>
 
                 {!isPaid && (
-                  <TouchableOpacity
-                    onPress={() => handlePay(item)}
-                    disabled={payingId === item.id}
-                    className="bg-emerald-600 active:bg-emerald-700 px-4 py-2.5 rounded-xl flex-row items-center space-x-1.5 shadow-sm"
-                  >
-                    {payingId === item.id ? (
-                      <ActivityIndicator color="#ffffff" size="small" />
-                    ) : (
-                      <>
-                        <CreditCard color="#ffffff" size={16} />
-                        <Text className="text-white font-bold text-xs ml-1">Pagar</Text>
-                      </>
-                    )}
-                  </TouchableOpacity>
+                  <View className="flex-row space-x-1.5">
+                    <TouchableOpacity
+                      onPress={() => {
+                        setSelectedObligationForNequi(item);
+                        setNequiModalOpen(true);
+                      }}
+                      className="bg-purple-900 active:bg-purple-800 px-3 py-2.5 rounded-xl flex-row items-center space-x-1 shadow-sm mr-1.5"
+                      title="Pagar cuota con Nequi"
+                    >
+                      <QrCode color="#ffffff" size={14} />
+                      <Text className="text-white font-bold text-xs ml-1">Nequi</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      onPress={() => handlePayOnline(item)}
+                      disabled={payingId === item.id}
+                      className="bg-emerald-600 active:bg-emerald-700 px-3.5 py-2.5 rounded-xl flex-row items-center space-x-1.5 shadow-sm"
+                    >
+                      {payingId === item.id ? (
+                        <ActivityIndicator color="#ffffff" size="small" />
+                      ) : (
+                        <>
+                          <CreditCard color="#ffffff" size={14} />
+                          <Text className="text-white font-bold text-xs ml-1">Pagar</Text>
+                        </>
+                      )}
+                    </TouchableOpacity>
+                  </View>
                 )}
               </View>
             );
@@ -214,16 +422,102 @@ export default function PaymentsScreen() {
         </View>
       )}
 
-      {/* Manual Bank Transfer Info */}
+      {/* Information Footer */}
       <View className="bg-slate-100 rounded-2xl p-4 mt-6 border border-slate-200/80">
         <Text className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
-          Pagos en Efectivo o Transferencia Veredal
+          Pagos en Efectivo o Caja Menor
         </Text>
         <Text className="text-xs text-slate-500 leading-relaxed">
-          También puedes realizar tu pago directamente en efectivo ante el Tesorero de la JAC en la sede comunal o mediante transferencia al Banco Agrario. El tesorero asentará el folio en el libro de caja menor.
+          También puedes pagar directamente en efectivo ante el Tesorero de la JAC en la sede comunal. El tesorero asentará el folio en el libro de caja menor y te emitirá el recibo oficial con paz y salvo.
         </Text>
       </View>
+
+      {/* NEQUI PAYMENT MODAL WITH QR */}
+      <Modal visible={nequiModalOpen} animationType="slide" transparent>
+        <View className="flex-1 bg-black/60 justify-center items-center p-4">
+          <View className="bg-white rounded-3xl p-6 w-full max-w-sm shadow-2xl space-y-4">
+            <View className="flex-row justify-between items-center pb-3 border-b border-slate-100">
+              <View className="flex-row items-center space-x-2">
+                <View className="w-8 h-8 rounded-xl bg-purple-900 items-center justify-center">
+                  <QrCode color="#ffffff" size={18} />
+                </View>
+                <Text className="text-base font-black text-purple-950 ml-2">
+                  Código QR de Nequi
+                </Text>
+              </View>
+              <TouchableOpacity onPress={() => setNequiModalOpen(false)}>
+                <X color="#64748b" size={20} />
+              </TouchableOpacity>
+            </View>
+
+            {/* QR Code */}
+            <View className="bg-purple-50 rounded-2xl p-4 items-center justify-center border border-purple-200 shadow-inner">
+              <QRCode
+                value={qrNequiValue}
+                size={170}
+                color="#200020"
+                backgroundColor="#ffffff"
+              />
+              <Text className="text-[11px] font-bold text-purple-900 mt-3">
+                Escanea desde la App Nequi
+              </Text>
+              <Text className="text-[10px] text-purple-700 text-center mt-0.5">
+                Usa la opción [Código QR] en tu app Nequi
+              </Text>
+            </View>
+
+            {/* Payment Info */}
+            <View className="bg-slate-50 p-3.5 rounded-2xl border border-slate-200 space-y-1">
+              <View className="flex-row justify-between items-center">
+                <Text className="text-[11px] text-slate-500">Número Nequi:</Text>
+                <Text className="font-mono font-black text-slate-900 text-sm">
+                  {nequiAccount.accountNumber}
+                </Text>
+              </View>
+              <View className="flex-row justify-between items-center">
+                <Text className="text-[11px] text-slate-500">Titular:</Text>
+                <Text className="font-bold text-slate-800 text-xs">
+                  {nequiAccount.holderName}
+                </Text>
+              </View>
+              <View className="flex-row justify-between items-center pt-1 border-t border-slate-200">
+                <Text className="text-[11px] font-bold text-slate-700">Monto sugerido:</Text>
+                <Text className="font-black text-emerald-700 text-base">
+                  $
+                  {(
+                    selectedObligationForNequi?.pendingBalance ||
+                    selectedObligationForNequi?.amount ||
+                    totalDebt ||
+                    10000
+                  ).toLocaleString("es-CO")}{" "}
+                  COP
+                </Text>
+              </View>
+            </View>
+
+            {/* Action Buttons */}
+            <View className="space-y-2 pt-2">
+              <TouchableOpacity
+                onPress={handleOpenNequi}
+                className="w-full bg-purple-900 active:bg-purple-950 py-3 rounded-2xl flex-row items-center justify-center space-x-2"
+              >
+                <Smartphone color="#ffffff" size={16} />
+                <Text className="text-white font-bold text-xs ml-1.5">Abrir Nequi para Pagar</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                onPress={handleReportPaymentWhatsApp}
+                className="w-full bg-emerald-600 active:bg-emerald-700 py-3 rounded-2xl flex-row items-center justify-center space-x-2"
+              >
+                <MessageCircle color="#ffffff" size={16} />
+                <Text className="text-white font-bold text-xs ml-1.5">
+                  Reportar Pago al Tesorero por WhatsApp
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </ScrollView>
   );
 }
-

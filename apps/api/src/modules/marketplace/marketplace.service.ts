@@ -13,6 +13,7 @@ import {
   CreateMarketOrderInput,
   UpdateMarketOrderStatusInput,
   MarketOrderStatus,
+  MembershipStatus,
 } from "@conectajac/shared";
 
 @Injectable()
@@ -90,36 +91,98 @@ export class MarketplaceService {
    * Publicar producto agrícola en el catálogo del mercado campesino
    */
   async createProduct(userId: string, input: CreateMarketProductInput) {
-    const producer = await this.prisma.producerProfile.findUnique({
+    let producer = await this.prisma.producerProfile.findUnique({
       where: { userId },
     });
 
-    if (!producer || !producer.isActive) {
-      throw new ForbiddenException(
-        "Debe crear un perfil de productor veredal antes de publicar productos"
-      );
+    // Si aún no ha configurado perfil de productor, crearlo automáticamente a partir de su afiliación
+    if (!producer) {
+      const membership = await this.prisma.jacMembership.findFirst({
+        where: { userId, status: MembershipStatus.ACTIVE },
+        include: { user: true },
+      });
+
+      if (!membership) {
+        throw new ForbiddenException(
+          "Debe contar con afiliación activa a una JAC para vender en el Mercado Campesino"
+        );
+      }
+
+      producer = await this.prisma.producerProfile.create({
+        data: {
+          userId,
+          jacId: membership.jacId,
+          farmName: membership.farmName || `Finca de ${membership.user.firstName}`,
+          veredaName: membership.veredaOrBarrio || "Sector Veredal",
+          whatsappContact: membership.user.phone || "3000000000",
+          bio: "Productor agrícola comunal registrado en el libro de afiliados",
+          isActive: true,
+          isVerified: true,
+        },
+      });
     }
 
-    // Asegurar que la categoría exista
-    const category = await this.prisma.marketCategory.findUnique({
-      where: { id: input.categoryId },
-    });
+    // Resolver la categoría del producto
+    let resolvedCategoryId = input.categoryId;
 
-    if (!category) {
-      throw new BadRequestException("Categoría de producto no encontrada");
+    if (resolvedCategoryId) {
+      const exists = await this.prisma.marketCategory.findUnique({
+        where: { id: resolvedCategoryId },
+      });
+      if (!exists) resolvedCategoryId = undefined;
     }
+
+    if (!resolvedCategoryId && input.category) {
+      const catSlug = input.category.toLowerCase().replace(/_/g, "-");
+      const foundBySlug = await this.prisma.marketCategory.findFirst({
+        where: {
+          OR: [
+            { slug: { contains: catSlug, mode: "insensitive" } },
+            { name: { contains: input.category, mode: "insensitive" } },
+          ],
+        },
+      });
+      if (foundBySlug) resolvedCategoryId = foundBySlug.id;
+    }
+
+    if (!resolvedCategoryId) {
+      const firstCat = await this.prisma.marketCategory.findFirst({
+        orderBy: { displayOrder: "asc" },
+      });
+      if (firstCat) {
+        resolvedCategoryId = firstCat.id;
+      } else {
+        const createdCat = await this.prisma.marketCategory.create({
+          data: {
+            name: "Productos del Campo y Granja",
+            slug: "productos-campo-granja",
+            displayOrder: 1,
+          },
+        });
+        resolvedCategoryId = createdCat.id;
+      }
+    }
+
+    const title = (input.title || input.name || "Cosecha Campesina").trim();
+    const description = (input.description || "Producto fresco cosechado directamente en vereda").trim();
+    const stockQuantity = input.stockQuantity ?? input.stock ?? 10;
+    const defaultImages = [
+      "https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&w=800&q=80",
+    ];
+    const imagesToSave =
+      input.images && input.images.length > 0 ? input.images : defaultImages;
 
     return this.prisma.marketProduct.create({
       data: {
         producerId: producer.id,
         jacId: producer.jacId,
-        categoryId: input.categoryId,
-        title: input.title.trim(),
-        description: input.description.trim(),
+        categoryId: resolvedCategoryId,
+        title,
+        description,
         price: input.price,
         unit: input.unit,
-        stockQuantity: input.stockQuantity,
-        images: input.images as unknown as Prisma.InputJsonValue,
+        stockQuantity,
+        images: imagesToSave as unknown as Prisma.InputJsonValue,
         isOrganic: input.isOrganic ?? false,
         harvestDate: input.harvestDate ? new Date(input.harvestDate) : null,
         availableForDelivery: input.availableForDelivery ?? true,
@@ -127,6 +190,84 @@ export class MarketplaceService {
         isAvailable: true,
       },
     });
+  }
+
+  /**
+   * Listar todos los productos del mercado para administración y moderación directiva
+   */
+  async getAdminProducts(jacId: string, query?: { search?: string; status?: string }) {
+    const whereClause: Record<string, unknown> = {
+      jacId,
+      ...(query?.status === "active" && { isAvailable: true }),
+      ...(query?.status === "suspended" && { isAvailable: false }),
+    };
+
+    if (query?.search) {
+      whereClause.OR = [
+        { title: { contains: query.search, mode: "insensitive" } },
+        { description: { contains: query.search, mode: "insensitive" } },
+      ];
+    }
+
+    return this.prisma.marketProduct.findMany({
+      where: whereClause,
+      include: {
+        producer: {
+          include: {
+            user: {
+              select: {
+                firstName: true,
+                lastName: true,
+                identificationNumber: true,
+                phone: true,
+              },
+            },
+          },
+        },
+        category: true,
+        _count: {
+          select: { orderItems: true },
+        },
+      },
+      orderBy: { createdAt: "desc" },
+    });
+  }
+
+  /**
+   * Moderar estado del producto (Aprobar o Suspender por cumplimiento legal/estatutario)
+   */
+  async updateProductStatus(jacId: string, productId: string, isAvailable: boolean) {
+    const product = await this.prisma.marketProduct.findFirst({
+      where: { id: productId, jacId },
+    });
+
+    if (!product) {
+      throw new NotFoundException("Producto no encontrado en esta JAC");
+    }
+
+    return this.prisma.marketProduct.update({
+      where: { id: productId },
+      data: { isAvailable },
+    });
+  }
+
+  /**
+   * Eliminar producto del mercado campesino (Directivos JAC)
+   */
+  async deleteProduct(jacId: string, productId: string) {
+    const product = await this.prisma.marketProduct.findFirst({
+      where: { id: productId, jacId },
+    });
+
+    if (!product) {
+      throw new NotFoundException("Producto no encontrado en esta JAC");
+    }
+
+    await this.prisma.marketProduct.delete({
+      where: { id: productId },
+    });
+
+    return { message: "Producto retirado del mercado campesino satisfactoriamente" };
   }
 
   /**

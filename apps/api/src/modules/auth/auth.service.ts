@@ -65,25 +65,12 @@ export class AuthService {
       throw new UnauthorizedException("Esta cuenta de usuario ha sido desactivada");
     }
 
-    const defaultPin = user.identificationNumber
-      ? user.identificationNumber.trim().slice(-4)
-      : "";
-    const effectivePin = user.accessPin || defaultPin;
-
     const isPasswordValid =
       (await bcrypt.compare(password, user.passwordHash)) ||
-      Boolean(effectivePin && effectivePin === password.trim());
+      (Boolean(user.accessPin) && user.accessPin === password.trim());
 
     if (!isPasswordValid) {
       throw new UnauthorizedException("Credenciales inválidas. Verifica tu documento y PIN de acceso.");
-    }
-
-    // Si aún no tenía PIN persistido explícitamente, persistirlo automáticamente
-    if (!user.accessPin && defaultPin) {
-      this.prisma.user.update({
-        where: { id: user.id },
-        data: { accessPin: defaultPin },
-      }).catch((err) => console.error("Error al persistir PIN por defecto:", err));
     }
 
     // Identificar roles y contextos JAC

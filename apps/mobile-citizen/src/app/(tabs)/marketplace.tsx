@@ -26,20 +26,24 @@ import {
 
 interface ProductItem {
   id: string;
-  name: string;
+  title?: string;
+  name?: string;
   description?: string;
-  category: string;
+  category?: any;
   price: number;
   unit: MarketUnit;
-  stock: number;
+  stockQuantity?: number;
+  stock?: number;
   images?: string[];
-  producer: {
-    farmName: string;
-    vereda: string;
-    user: {
-      firstName: string;
-      lastName: string;
-      phone: string;
+  producer?: {
+    farmName?: string;
+    veredaName?: string;
+    vereda?: string;
+    whatsappContact?: string;
+    user?: {
+      firstName?: string;
+      lastName?: string;
+      phone?: string;
     };
   };
 }
@@ -157,12 +161,15 @@ export default function MarketplaceScreen() {
     }
 
     publishMutation.mutate({
+      title: newProduct.name.trim(),
       name: newProduct.name.trim(),
       description: newProduct.description.trim() || undefined,
       category: newProduct.category,
       price: priceNum,
       unit: newProduct.unit,
+      stockQuantity: stockNum,
       stock: stockNum,
+      images: [],
     });
   };
 
@@ -227,7 +234,7 @@ export default function MarketplaceScreen() {
             {products.map((item) => (
               <View
                 key={item.id}
-                className="bg-white rounded-2xl border border-slate-200/80 p-4 shadow-sm flex-row justify-between items-center"
+                className="bg-white rounded-2xl border border-slate-200/80 p-4 shadow-sm flex-row justify-between items-center mb-3"
               >
                 <View className="flex-1 mr-3">
                   <View className="flex-row items-center space-x-1.5 mb-1">
@@ -235,10 +242,10 @@ export default function MarketplaceScreen() {
                       {item.unit}
                     </Text>
                     <Text className="text-slate-400 text-xs">
-                      • Disp: {item.stock} {item.unit.toLowerCase()}s
+                      • Disp: {item.stockQuantity ?? item.stock ?? 1} {item.unit.toLowerCase()}s
                     </Text>
                   </View>
-                  <Text className="text-base font-bold text-slate-900">{item.name}</Text>
+                  <Text className="text-base font-bold text-slate-900">{item.title || item.name}</Text>
                   {item.description ? (
                     <Text className="text-xs text-slate-500 mt-0.5" numberOfLines={2}>
                       {item.description}
@@ -248,7 +255,7 @@ export default function MarketplaceScreen() {
                   <View className="flex-row items-center mt-2 space-x-1">
                     <MapPin color="#94a3b8" size={13} />
                     <Text className="text-[11px] text-slate-400">
-                      {item.producer?.farmName || "Finca Campesina"} ({item.producer?.vereda})
+                      {item.producer?.farmName || "Finca Campesina"} ({item.producer?.veredaName || item.producer?.vereda || "Vereda"})
                     </Text>
                   </View>
 
@@ -383,14 +390,80 @@ export default function MarketplaceScreen() {
             <ScrollView className="space-y-3">
               <View>
                 <Text className="text-xs font-semibold text-slate-600 mb-1">
-                  Nombre del Producto *
+                  Nombre del Producto o Cosecha *
                 </Text>
                 <TextInput
                   value={newProduct.name}
                   onChangeText={(val) => setNewProduct({ ...newProduct, name: val })}
-                  placeholder="Ej. Cacao Seco Selección Especial"
+                  placeholder="Ej. Leche cruda, Cacao, Queso campesino..."
                   className="bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm"
                 />
+              </View>
+
+              <View className="mt-2">
+                <Text className="text-xs font-semibold text-slate-600 mb-1">
+                  Categoría del Producto
+                </Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} className="flex-row py-1">
+                  {[
+                    { id: "FRUITS_VEGETABLES", label: "Frutas & Verduras" },
+                    { id: "DAIRY_EGGS", label: "Lácteos & Huevos" },
+                    { id: "GRAINS_COFFEE", label: "Café & Granos" },
+                    { id: "ARTISANAL", label: "Artesanías / Panela" },
+                  ].map((cat) => (
+                    <TouchableOpacity
+                      key={cat.id}
+                      onPress={() => setNewProduct({ ...newProduct, category: cat.id })}
+                      className={`mr-2 px-3 py-1.5 rounded-full border ${
+                        newProduct.category === cat.id
+                          ? "bg-amber-600 border-amber-600"
+                          : "bg-slate-100 border-slate-200"
+                      }`}
+                    >
+                      <Text
+                        className={`text-xs font-semibold ${
+                          newProduct.category === cat.id ? "text-white" : "text-slate-700"
+                        }`}
+                      >
+                        {cat.label}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              </View>
+
+              <View className="mt-2">
+                <Text className="text-xs font-semibold text-slate-600 mb-1">
+                  Unidad de Medida
+                </Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} className="flex-row py-1">
+                  {[
+                    { unit: MarketUnit.KG, label: "Kilo (Kg)" },
+                    { unit: MarketUnit.ARROBA, label: "Arroba (@)" },
+                    { unit: MarketUnit.BULTO, label: "Bulto / Saco" },
+                    { unit: MarketUnit.UNIDAD, label: "Unidad" },
+                    { unit: MarketUnit.LITRO, label: "Litro" },
+                    { unit: MarketUnit.LIBRA, label: "Libra (Lb)" },
+                  ].map((u) => (
+                    <TouchableOpacity
+                      key={u.unit}
+                      onPress={() => setNewProduct({ ...newProduct, unit: u.unit })}
+                      className={`mr-2 px-3 py-1.5 rounded-full border ${
+                        newProduct.unit === u.unit
+                          ? "bg-emerald-600 border-emerald-600"
+                          : "bg-slate-100 border-slate-200"
+                      }`}
+                    >
+                      <Text
+                        className={`text-xs font-semibold ${
+                          newProduct.unit === u.unit ? "text-white" : "text-slate-700"
+                        }`}
+                      >
+                        {u.label}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
               </View>
 
               <View className="mt-2">
@@ -431,6 +504,13 @@ export default function MarketplaceScreen() {
                     className="bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm"
                   />
                 </View>
+              </View>
+
+              {/* Informative compliance text */}
+              <View className="p-3 bg-amber-50/70 border border-amber-200 rounded-xl mt-3">
+                <Text className="text-[11px] text-amber-900 leading-relaxed">
+                  ⚖️ <Text className="font-bold">Control Legal & Sanitario (Ley 2166):</Text> La directiva de tu JAC supervisa que todos los productos ofertados cumplan con las normas legales y estatutarias veredales.
+                </Text>
               </View>
 
               <TouchableOpacity

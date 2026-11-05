@@ -3,8 +3,11 @@ import {
   Get,
   Post,
   Patch,
+  Delete,
+  Param,
   Body,
   Query,
+  UseGuards,
   UsePipes,
 } from "@nestjs/common";
 import {
@@ -17,6 +20,10 @@ import {
 import { MarketplaceService } from "./marketplace.service";
 import { Public } from "../../core/decorators/public.decorator";
 import { CurrentUser } from "../../core/decorators/current-user.decorator";
+import { CurrentTenant } from "../../core/decorators/current-tenant.decorator";
+import { Roles } from "../../core/decorators/roles.decorator";
+import { RolesGuard } from "../../core/guards/roles.guard";
+import { TenantGuard } from "../../core/guards/tenant.guard";
 import { ZodValidationPipe } from "../../core/pipes/zod-validation.pipe";
 import {
   ProducerProfileSchema,
@@ -28,6 +35,7 @@ import {
   UpdateMarketOrderStatusSchema,
   UpdateMarketOrderStatusInput,
   MarketOrderStatus,
+  UserRole,
   UserJwtPayload,
 } from "@conectajac/shared";
 
@@ -176,6 +184,71 @@ export class MarketplaceController {
     @Body() body: UpdateMarketOrderStatusInput
   ) {
     return this.marketplaceService.updateOrderStatus(user.sub, body);
+  }
+
+  @Get("admin/products")
+  @ApiBearerAuth()
+  @Roles(
+    UserRole.SUPER_ADMIN,
+    UserRole.JAC_ADMIN,
+    UserRole.JAC_PRESIDENT,
+    UserRole.JAC_SECRETARY,
+    UserRole.JAC_TREASURER
+  )
+  @UseGuards(TenantGuard, RolesGuard)
+  @ApiOperation({
+    summary: "Administrar catálogo de productos del mercado campesino (Directivos JAC)",
+    description: "Permite a los directivos vigilar y moderar los productos de su vereda conforme a la Ley 2166",
+  })
+  async getAdminProducts(
+    @CurrentTenant() jacId: string,
+    @Query("search") search?: string,
+    @Query("status") status?: string
+  ) {
+    return this.marketplaceService.getAdminProducts(jacId, { search, status });
+  }
+
+  @Patch("admin/products/:id/status")
+  @ApiBearerAuth()
+  @Roles(
+    UserRole.SUPER_ADMIN,
+    UserRole.JAC_ADMIN,
+    UserRole.JAC_PRESIDENT,
+    UserRole.JAC_SECRETARY,
+    UserRole.JAC_TREASURER
+  )
+  @UseGuards(TenantGuard, RolesGuard)
+  @ApiOperation({
+    summary: "Moderar producto del mercado campesino (Aprobar o Suspender)",
+    description: "Permite habilitar o suspender la comercialización de un producto por causales legales o estatutarias",
+  })
+  async updateAdminProductStatus(
+    @CurrentTenant() jacId: string,
+    @Param("id") id: string,
+    @Body() body: { isAvailable: boolean }
+  ) {
+    return this.marketplaceService.updateProductStatus(jacId, id, body.isAvailable);
+  }
+
+  @Delete("admin/products/:id")
+  @ApiBearerAuth()
+  @Roles(
+    UserRole.SUPER_ADMIN,
+    UserRole.JAC_ADMIN,
+    UserRole.JAC_PRESIDENT,
+    UserRole.JAC_SECRETARY,
+    UserRole.JAC_TREASURER
+  )
+  @UseGuards(TenantGuard, RolesGuard)
+  @ApiOperation({
+    summary: "Dar de baja producto del mercado campesino",
+    description: "Elimina de forma permanente un producto del catálogo comunal",
+  })
+  async deleteAdminProduct(
+    @CurrentTenant() jacId: string,
+    @Param("id") id: string
+  ) {
+    return this.marketplaceService.deleteProduct(jacId, id);
   }
 }
 

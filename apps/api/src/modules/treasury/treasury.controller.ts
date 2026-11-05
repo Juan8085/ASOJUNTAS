@@ -85,6 +85,18 @@ export class TreasuryController {
     return this.treasuryService.updateFeeConfig(id, jacId, body);
   }
 
+  @Get("my-obligations")
+  @ApiOperation({
+    summary: "Consultar mis cuotas y cuentas de recaudo comunitarias",
+    description: "Permite al afiliado consultar su estado de cuenta, cuotas pendientes, cuentas bancarias de la JAC y número de Nequi",
+  })
+  async getMyObligations(
+    @CurrentUser() user: UserJwtPayload,
+    @CurrentTenant() tenantId?: string
+  ) {
+    return this.treasuryService.getMyObligations(user.sub, tenantId);
+  }
+
   @Get("fees")
   @UseGuards(TenantGuard)
   @ApiOperation({

@@ -21,6 +21,7 @@ import {
   ChevronDown,
   Menu,
   X,
+  ShoppingBag,
 } from "lucide-react";
 
 const jacNavItems = [
@@ -28,6 +29,7 @@ const jacNavItems = [
   { name: "Libro de Afiliados", href: "/dashboard/affiliates", icon: Users },
   { name: "Certificados con QR", href: "/dashboard/certificates", icon: FileCheck },
   { name: "Tesorería & Cuotas", href: "/dashboard/treasury", icon: Landmark },
+  { name: "Mercado Campesino", href: "/dashboard/marketplace", icon: ShoppingBag },
   { name: "Asambleas & Votos", href: "/dashboard/assemblies", icon: Vote },
   { name: "Mingas Veredales", href: "/dashboard/mingas", icon: Shovel },
   { name: "Cartelera & Alertas", href: "/dashboard/posts", icon: Megaphone },
@@ -40,6 +42,7 @@ const asojuntasNavItems = [
   { name: "Censo Comunal de Afiliados", href: "/dashboard/affiliates", icon: Users },
   { name: "Certificados Oficiales & QR", href: "/dashboard/certificates", icon: FileCheck },
   { name: "Tesorería Comunal", href: "/dashboard/treasury", icon: Landmark },
+  { name: "Mercado Campesino Municipal", href: "/dashboard/marketplace", icon: ShoppingBag },
   { name: "Asambleas Municipales", href: "/dashboard/assemblies", icon: Vote },
   { name: "Mingas y Proyectos", href: "/dashboard/mingas", icon: Shovel },
   { name: "Circulares & Comunicados", href: "/dashboard/posts", icon: Megaphone },

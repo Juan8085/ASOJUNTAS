@@ -1090,4 +1090,172 @@ export class TreasuryService {
       },
     };
   }
+
+  /**
+   * Consultar obligaciones y cuentas bancarias de recaudo para el ciudadano autenticado
+   */
+  async getMyObligations(userId: string, jacId?: string) {
+    const membership = await this.prisma.jacMembership.findFirst({
+      where: {
+        userId,
+        ...(jacId && { jacId }),
+      },
+      include: {
+        jac: true,
+      },
+      orderBy: { createdAt: "desc" },
+    });
+
+    if (!membership) {
+      return {
+        data: [],
+        summary: { totalDebt: 0, isUpToDate: true, overdueCount: 0, advanceCount: 0 },
+        bankAccounts: [],
+        nequiAccount: null,
+      };
+    }
+
+    const now = new Date();
+    const curYear = now.getFullYear();
+    const curMonth = now.getMonth();
+    const currentPeriodStr = `${curYear}-${String(curMonth + 1).padStart(2, "0")}`;
+
+    // Obtener obligaciones registradas
+    const rawObligations = await this.prisma.userFeeObligation.findMany({
+      where: {
+        userId,
+        jacId: membership.jacId,
+      },
+      include: {
+        feeConfig: {
+          select: { name: true, type: true, amount: true },
+        },
+      },
+      orderBy: { period: "desc" },
+    });
+
+    let obligations = [...rawObligations];
+    if (!obligations.some((o) => o.period === currentPeriodStr)) {
+      const feeConfig = await this.prisma.feeConfiguration.findFirst({
+        where: { jacId: membership.jacId, isActive: true },
+      });
+      if (feeConfig) {
+        const dueDate = new Date(curYear, curMonth, feeConfig.dueDateDay || 15);
+        obligations.unshift({
+          id: `virtual-${currentPeriodStr}`,
+          userId,
+          membershipId: membership.id,
+          jacId: membership.jacId,
+          feeConfigId: feeConfig.id,
+          period: currentPeriodStr,
+          amount: feeConfig.amount,
+          paidAmount: 0,
+          pendingBalance: feeConfig.amount,
+          dueDate,
+          status: ObligationStatus.PENDING,
+          createdAt: now,
+          updatedAt: now,
+          feeConfig: {
+            name: feeConfig.name,
+            type: feeConfig.type,
+            amount: feeConfig.amount,
+          },
+        } as any);
+      }
+    }
+
+    const pendingObligations = obligations.filter(
+      (o) =>
+        o.status === ObligationStatus.PENDING ||
+        o.status === ObligationStatus.OVERDUE ||
+        o.status === ObligationStatus.PARTIALLY_PAID
+    );
+    const totalDebt = pendingObligations.reduce(
+      (sum, o) => sum + Math.max(0, Number(o.amount) - (Number(o.paidAmount) || 0)),
+      0
+    );
+    const overdueCount = pendingObligations.filter((o) => new Date(o.dueDate) < now).length;
+    const advanceCount = obligations.filter(
+      (o) => o.status === ObligationStatus.PAID && o.period > currentPeriodStr
+    ).length;
+
+    // Obtener cuentas bancarias de la JAC
+    const jacBankAccountsRaw: any[] = Array.isArray(membership.jac.bankAccounts)
+      ? (membership.jac.bankAccounts as any[])
+      : [];
+
+    const treasuryAccounts = await this.prisma.treasuryAccount.findMany({
+      where: { jacId: membership.jacId, isActive: true },
+    });
+
+    const bankAccounts = [
+      ...jacBankAccountsRaw.map((a) => ({
+        bankName: a.bankName || "Banco Agrario",
+        accountType: a.accountType || "Ahorros",
+        accountNumber: a.accountNumber || "000-000000",
+        holderName: a.holderName || membership.jac.name,
+        isDigital:
+          a.accountType === "Digital" ||
+          Boolean(a.bankName && a.bankName.toLowerCase().includes("nequi")),
+      })),
+      ...treasuryAccounts
+        .filter((t) => t.type !== "CASH_BOX" && t.accountNumber)
+        .map((t) => ({
+          bankName: t.name,
+          accountType:
+            t.type === "BANK_SAVINGS" ? "Ahorros" : t.type === "DIGITAL_WALLET" ? "Digital" : "Corriente",
+          accountNumber: t.accountNumber || "",
+          holderName: membership.jac.name,
+          isDigital: t.type === "DIGITAL_WALLET" || t.name.toLowerCase().includes("nequi"),
+        })),
+    ];
+
+    // Buscar o identificar cuenta de Nequi
+    const nequiFound = bankAccounts.find(
+      (b) =>
+        b.isDigital ||
+        b.bankName.toLowerCase().includes("nequi") ||
+        b.bankName.toLowerCase().includes("daviplata")
+    );
+
+    const nequiAccount = nequiFound || {
+      bankName: "Nequi Comunal",
+      accountType: "Billetera Digital",
+      accountNumber: membership.jac.phone || "3100000000",
+      holderName: `${membership.jac.name} (Tesorera/o)`,
+      isDigital: true,
+    };
+
+    return {
+      data: obligations.map((o) => ({
+        id: o.id,
+        amount: o.amount,
+        paidAmount: o.paidAmount,
+        pendingBalance: Math.max(0, o.amount - (o.paidAmount || 0)),
+        dueDate: o.dueDate,
+        status: o.status,
+        periodName: o.period,
+        configuration: {
+          name: o.feeConfig?.name || "Cuota Comunal",
+          type: o.feeConfig?.type || "ORDINARY",
+          amount: o.amount,
+        },
+      })),
+      summary: {
+        totalDebt,
+        isUpToDate: totalDebt === 0,
+        overdueCount,
+        advanceCount,
+      },
+      jac: {
+        id: membership.jac.id,
+        name: membership.jac.name,
+        vereda: membership.jac.veredaOrBarrio,
+        nit: membership.jac.nit,
+        phone: membership.jac.phone,
+      },
+      bankAccounts,
+      nequiAccount,
+    };
+  }
 }

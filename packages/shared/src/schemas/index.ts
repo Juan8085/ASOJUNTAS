@@ -247,15 +247,18 @@ export const ProducerProfileSchema = z.object({
 });
 
 export const CreateMarketProductSchema = z.object({
-  categoryId: IdSchema,
-  title: z.string().min(3).max(120),
-  description: z.string().max(800),
+  categoryId: IdSchema.optional(),
+  category: z.string().optional(),
+  title: z.string().min(2).max(120).optional(),
+  name: z.string().min(2).max(120).optional(),
+  description: z.string().max(800).optional().default(""),
   price: z.number().positive(),
-  unit: z.nativeEnum(MarketUnit),
-  stockQuantity: z.number().nonnegative(),
+  unit: z.nativeEnum(MarketUnit).default(MarketUnit.KG),
+  stockQuantity: z.number().nonnegative().optional(),
+  stock: z.number().nonnegative().optional(),
   isOrganic: z.boolean().default(false),
-  harvestDate: z.string().datetime().optional(),
-  images: z.array(z.string().url()).min(1, "Debe subir al menos una foto del producto").max(5),
+  harvestDate: z.string().optional(),
+  images: z.array(z.string()).optional().default([]),
   availableForDelivery: z.boolean().default(true),
   availableForPickup: z.boolean().default(true)
 });
