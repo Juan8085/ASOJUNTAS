@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import Link from "next/link";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiClient } from "@/lib/api-client";
 import { useAuthStore } from "@/lib/auth-store";
@@ -19,6 +20,8 @@ import {
   Phone,
   MapPin,
   ExternalLink,
+  QrCode,
+  ArrowRight,
 } from "lucide-react";
 
 interface BankAccount {
@@ -495,6 +498,30 @@ export default function SettingsPage() {
             </button>
           </div>
 
+          {/* Nequi & Mobile App QR Integration Banner */}
+          <div className="p-4 rounded-xl bg-purple-50 border border-purple-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xs">
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-xl bg-purple-600 text-white flex items-center justify-center shrink-0">
+                <QrCode className="w-5 h-5" />
+              </div>
+              <div className="text-xs">
+                <span className="font-bold text-purple-950 block text-sm">
+                  Código QR de Nequi / Billetera Digital en App Móvil
+                </span>
+                <span className="text-purple-700 leading-relaxed">
+                  Las billeteras digitales (Nequi o Daviplata) registradas aquí generan en tiempo real el código QR interactivo de recaudo que los afiliados escanean en la app ciudadana. Puedes consultar la vista previa del QR o imprimir el afiche oficial en:
+                </span>
+              </div>
+            </div>
+            <Link
+              href="/dashboard/treasury"
+              className="px-3 py-2 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold transition flex items-center gap-1.5 shrink-0 shadow-sm"
+            >
+              <span>Ver QR en Tesorería</span>
+              <ArrowRight className="w-3.5 h-3.5" />
+            </Link>
+          </div>
+
           {formData.bankAccounts.length === 0 ? (
             <div className="text-center py-6 text-sm text-slate-400">
               No hay cuentas bancarias configuradas. Los pagos solo se registrarán en caja menor física.
@@ -594,7 +621,7 @@ export default function SettingsPage() {
 
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
             {jac?.memberships && jac.memberships.length > 0 ? (
-              jac.memberships.map((m) => (
+              jac.memberships.map((m: any) => (
                 <div
                   key={m.id}
                   className="p-4 rounded-xl border border-slate-200/80 bg-slate-50 flex items-start gap-3"

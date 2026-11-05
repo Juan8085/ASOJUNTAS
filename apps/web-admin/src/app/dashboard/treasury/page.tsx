@@ -1,10 +1,11 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiClient } from "@/lib/api-client";
 import { useAuthStore } from "@/lib/auth-store";
 import { formatCurrency, formatDate, downloadCsv } from "@/lib/utils";
+import QRCode from "qrcode";
 import {
   Landmark,
   PlusCircle,
@@ -32,6 +33,8 @@ import {
   UserX,
   Printer,
   Eye,
+  QrCode,
+  Smartphone,
 } from "lucide-react";
 import {
   TreasuryAccountType,
@@ -157,7 +160,9 @@ interface PortfolioResponse {
 export default function TreasuryPage() {
   const queryClient = useQueryClient();
   const { currentJacId } = useAuthStore();
-  const [activeTab, setActiveTab] = useState<"portfolio" | "receipts" | "movements" | "movement_form" | "fees">("portfolio");
+  const [activeTab, setActiveTab] = useState<
+    "portfolio" | "receipts" | "movements" | "movement_form" | "fees" | "nequi_qr"
+  >("portfolio");
 
   // Notifications
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
@@ -194,6 +199,17 @@ export default function TreasuryPage() {
   const [parsedImportRows, setParsedImportRows] = useState<any[]>([]);
   const [importFeedback, setImportFeedback] = useState<string | null>(null);
 
+  // Nequi & QR Accounts State
+  const [nequiForm, setNequiForm] = useState({
+    phone: "",
+    holderName: "",
+    bankName: "Nequi",
+  });
+  const [bankAccountsList, setBankAccountsList] = useState<any[]>([]);
+  const [nequiQrDataUrl, setNequiQrDataUrl] = useState<string>("");
+  const [savingAccounts, setSavingAccounts] = useState(false);
+  const [copiedNequi, setCopiedNequi] = useState(false);
+
   // General movement form state (non-fee)
   const [movementForm, setMovementForm] = useState({
     accountId: "",
@@ -202,6 +218,88 @@ export default function TreasuryPage() {
     amount: "",
     description: "",
   });
+
+  // Query JAC for Official Bank Accounts & Phone
+  const { data: jacData, refetch: refetchJac } = useQuery<any>({
+    queryKey: ["jac-treasury-details", currentJacId],
+    queryFn: () => apiClient.get(`/jacs/${currentJacId}`),
+    enabled: Boolean(currentJacId),
+  });
+
+  useEffect(() => {
+    if (jacData) {
+      const accounts: any[] = Array.isArray(jacData.bankAccounts) ? jacData.bankAccounts : [];
+      const nequiAcc = accounts.find(
+        (a) =>
+          a.accountType === "Digital" ||
+          a.bankName?.toLowerCase().includes("nequi") ||
+          a.bankName?.toLowerCase().includes("daviplata")
+      );
+      const otherAccounts = accounts.filter((a) => a !== nequiAcc);
+
+      setNequiForm({
+        phone: nequiAcc?.accountNumber || jacData.phone || "",
+        holderName: nequiAcc?.holderName || `JAC ${jacData.name} - Tesorería`,
+        bankName: nequiAcc?.bankName || "Nequi",
+      });
+      setBankAccountsList(otherAccounts);
+    }
+  }, [jacData]);
+
+  useEffect(() => {
+    const rawNumber = nequiForm.phone.replace(/\D/g, "");
+    if (rawNumber.length >= 7) {
+      const qrPayload = `nequi://send?phone=${rawNumber}&amount=10000`;
+      QRCode.toDataURL(qrPayload, {
+        width: 350,
+        margin: 2,
+        color: {
+          dark: "#200030",
+          light: "#ffffff",
+        },
+      })
+        .then((url) => setNequiQrDataUrl(url))
+        .catch(() => setNequiQrDataUrl(""));
+    } else {
+      setNequiQrDataUrl("");
+    }
+  }, [nequiForm.phone]);
+
+  const handleSaveAccounts = async () => {
+    if (!currentJacId) return;
+    try {
+      setSavingAccounts(true);
+      const cleanPhone = nequiForm.phone.trim();
+      const updatedBankAccounts = [
+        ...(cleanPhone
+          ? [
+              {
+                bankName: nequiForm.bankName.trim() || "Nequi",
+                accountType: "Digital",
+                accountNumber: cleanPhone,
+                holderName: nequiForm.holderName.trim() || jacData?.name || "Tesorero JAC",
+                holderNit: jacData?.nit || "",
+              },
+            ]
+          : []),
+        ...bankAccountsList.filter((a) => a.accountNumber?.trim()),
+      ];
+
+      await apiClient.patch(`/jacs/${currentJacId}/settings`, {
+        bankAccounts: updatedBankAccounts,
+      });
+
+      queryClient.invalidateQueries({ queryKey: ["jac-treasury-details", currentJacId] });
+      queryClient.invalidateQueries({ queryKey: ["jac-settings", currentJacId] });
+      refetchJac();
+      setStatusMessage("¡Cuentas de recaudo y Código QR de Nequi actualizados exitosamente!");
+      setTimeout(() => setStatusMessage(null), 5000);
+    } catch (err: any) {
+      setErrorMessage(err.message || "Error al guardar las cuentas de recaudo.");
+    } finally {
+      setSavingAccounts(false);
+    }
+  };
 
   // ================= QUERIES =================
   const { data: accounts } = useQuery<TreasuryAccountItem[]>({
@@ -710,6 +808,16 @@ export default function TreasuryPage() {
           }`}
         >
           <Settings className="w-4 h-4" /> Configuración de Cuotas & Vigencias
+        </button>
+        <button
+          onClick={() => setActiveTab("nequi_qr")}
+          className={`py-3 px-5 text-sm font-bold border-b-2 transition whitespace-nowrap flex items-center gap-2 ${
+            activeTab === "nequi_qr"
+              ? "border-purple-600 text-purple-700 bg-purple-50/50"
+              : "border-transparent text-slate-500 hover:text-slate-800"
+          }`}
+        >
+          <QrCode className="w-4 h-4 text-purple-600" /> Cuentas de Recaudo & QR Nequi
         </button>
       </div>
 
@@ -1373,6 +1481,368 @@ export default function TreasuryPage() {
                   </div>
                 </div>
               ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ================= TAB 6: CUENTAS DE RECAUDO & QR NEQUI ================= */}
+      {activeTab === "nequi_qr" && (
+        <div className="space-y-6">
+          {/* Header Banner */}
+          <div className="p-6 rounded-3xl bg-gradient-to-r from-purple-900 via-purple-800 to-indigo-900 text-white shadow-xl flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="px-2.5 py-0.5 rounded-full bg-fuchsia-400 text-purple-950 text-[10px] font-black uppercase tracking-wider">
+                  Recaudo Móvil Ciudadano
+                </span>
+                <span className="text-xs text-purple-200">Ley 2166 de 2021</span>
+              </div>
+              <h3 className="text-xl font-black mt-1 tracking-tight">
+                Billetera Digital Nequi & Cuentas Bancarias de la JAC
+              </h3>
+              <p className="text-xs text-purple-200/80 mt-1 max-w-2xl leading-relaxed">
+                El número celular configurado aquí alimenta automáticamente el <strong>Código QR interactivo</strong> que los afiliados ven y escanean en la aplicación móvil en la sección <strong>[Pagar con Nequi]</strong>.
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2.5">
+              <button
+                type="button"
+                onClick={handleSaveAccounts}
+                disabled={savingAccounts}
+                className="px-4 py-2.5 rounded-2xl bg-fuchsia-500 hover:bg-fuchsia-600 text-white text-xs font-black shadow-lg shadow-fuchsia-500/30 transition flex items-center gap-2 disabled:opacity-50"
+              >
+                {savingAccounts ? (
+                  <RefreshCw className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Check className="w-4 h-4" />
+                )}
+                <span>Guardar Cambios</span>
+              </button>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+            {/* Form Column */}
+            <div className="lg:col-span-7 space-y-5">
+              {/* Nequi Configuration Card */}
+              <div className="bg-white rounded-3xl border border-purple-100 p-6 shadow-sm space-y-4">
+                <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-9 h-9 rounded-xl bg-purple-100 text-purple-700 flex items-center justify-center font-black text-sm">
+                      NQ
+                    </div>
+                    <div>
+                      <h4 className="text-sm font-black text-slate-900">
+                        Configuración de Nequi / Daviplata Oficial
+                      </h4>
+                      <p className="text-[11px] text-slate-500">
+                        Canal digital preferente para el pago de cuotas ordinarias
+                      </p>
+                    </div>
+                  </div>
+                  <span className="px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 text-[10px] font-bold border border-emerald-200">
+                    Sincronizado con App
+                  </span>
+                </div>
+
+                <div className="space-y-3.5">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">
+                      Número Celular de la Cuenta Nequi *
+                    </label>
+                    <div className="relative">
+                      <Smartphone className="w-4 h-4 text-purple-600 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                      <input
+                        type="tel"
+                        maxLength={10}
+                        value={nequiForm.phone}
+                        onChange={(e) =>
+                          setNequiForm((prev) => ({
+                            ...prev,
+                            phone: e.target.value.replace(/\D/g, ""),
+                          }))
+                        }
+                        placeholder="Ej: 3124440001"
+                        className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 text-sm font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-600"
+                      />
+                    </div>
+                    <p className="text-[11px] text-slate-400 mt-1">
+                      El afiliado transferirá a este número o lo escaneará desde su app Nequi.
+                    </p>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">
+                        Nombre del Titular *
+                      </label>
+                      <input
+                        type="text"
+                        value={nequiForm.holderName}
+                        onChange={(e) =>
+                          setNequiForm((prev) => ({ ...prev, holderName: e.target.value }))
+                        }
+                        placeholder="Ej: JAC El Salado - Tesorería"
+                        className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-600"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">
+                        Tipo de Billetera Digital
+                      </label>
+                      <select
+                        value={nequiForm.bankName}
+                        onChange={(e) =>
+                          setNequiForm((prev) => ({ ...prev, bankName: e.target.value }))
+                        }
+                        className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-600"
+                      >
+                        <option value="Nequi">Nequi (Bancolombia)</option>
+                        <option value="Daviplata">Daviplata (Davivienda)</option>
+                        <option value="Dale">Dale! / Transfiya</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Other Traditional Bank Accounts */}
+              <div className="bg-white rounded-3xl border border-slate-200/80 p-6 shadow-sm space-y-4">
+                <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                  <div className="flex items-center gap-2.5">
+                    <Landmark className="w-5 h-5 text-blue-600" />
+                    <div>
+                      <h4 className="text-sm font-black text-slate-900">
+                        Otras Cuentas Bancarias Institucionales
+                      </h4>
+                      <p className="text-[11px] text-slate-500">
+                        Para recaudos de aportes por Banco Agrario o convenios
+                      </p>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setBankAccountsList((prev) => [
+                        ...prev,
+                        {
+                          bankName: "Banco Agrario de Colombia",
+                          accountType: "Ahorros",
+                          accountNumber: "",
+                          holderName: jacData?.name || "JAC Comunal",
+                          holderNit: jacData?.nit || "",
+                        },
+                      ])
+                    }
+                    className="inline-flex items-center gap-1 text-xs font-bold px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 transition"
+                  >
+                    <PlusCircle className="w-3.5 h-3.5 text-slate-600" />
+                    <span>Agregar Banco</span>
+                  </button>
+                </div>
+
+                {bankAccountsList.length === 0 ? (
+                  <p className="text-xs text-slate-400 py-3 text-center">
+                    No hay cuentas bancarias tradicionales adicionales configuradas.
+                  </p>
+                ) : (
+                  <div className="space-y-3">
+                    {bankAccountsList.map((acc, index) => (
+                      <div
+                        key={index}
+                        className="p-3.5 rounded-2xl border border-slate-200 bg-slate-50/70 grid grid-cols-1 sm:grid-cols-4 gap-2.5 items-center text-xs"
+                      >
+                        <div>
+                          <label className="text-[10px] text-slate-400 font-bold block mb-0.5">
+                            Banco
+                          </label>
+                          <input
+                            type="text"
+                            value={acc.bankName}
+                            onChange={(e) => {
+                              const updated = [...bankAccountsList];
+                              updated[index].bankName = e.target.value;
+                              setBankAccountsList(updated);
+                            }}
+                            className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-semibold"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="text-[10px] text-slate-400 font-bold block mb-0.5">
+                            Tipo
+                          </label>
+                          <select
+                            value={acc.accountType}
+                            onChange={(e) => {
+                              const updated = [...bankAccountsList];
+                              updated[index].accountType = e.target.value;
+                              setBankAccountsList(updated);
+                            }}
+                            className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-semibold"
+                          >
+                            <option value="Ahorros">Ahorros</option>
+                            <option value="Corriente">Corriente</option>
+                          </select>
+                        </div>
+
+                        <div>
+                          <label className="text-[10px] text-slate-400 font-bold block mb-0.5">
+                            Número
+                          </label>
+                          <input
+                            type="text"
+                            value={acc.accountNumber}
+                            onChange={(e) => {
+                              const updated = [...bankAccountsList];
+                              updated[index].accountNumber = e.target.value;
+                              setBankAccountsList(updated);
+                            }}
+                            className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-mono font-bold"
+                            placeholder="0492-XXXX-XX"
+                          />
+                        </div>
+
+                        <div className="flex items-center justify-end pt-3 sm:pt-0">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setBankAccountsList((prev) => prev.filter((_, i) => i !== index))
+                            }
+                            className="p-1.5 rounded-lg text-rose-500 hover:bg-rose-50 transition"
+                            title="Eliminar cuenta"
+                          >
+                            <X className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <div className="pt-2 flex justify-end">
+                  <button
+                    type="button"
+                    onClick={handleSaveAccounts}
+                    disabled={savingAccounts}
+                    className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition flex items-center gap-1.5 disabled:opacity-50"
+                  >
+                    {savingAccounts ? (
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    ) : (
+                      <Check className="w-3.5 h-3.5" />
+                    )}
+                    <span>Guardar Todas las Cuentas</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Live QR Preview Column */}
+            <div className="lg:col-span-5 space-y-4">
+              <div className="bg-gradient-to-br from-[#200030] via-[#2d0042] to-[#12001c] rounded-3xl p-6 text-white shadow-2xl border border-purple-900/40 space-y-5">
+                <div className="flex items-center justify-between border-b border-purple-800/60 pb-3">
+                  <div className="flex items-center gap-2">
+                    <QrCode className="w-5 h-5 text-fuchsia-400" />
+                    <span className="font-extrabold text-sm tracking-wide text-purple-100">
+                      Vista Previa Oficial del QR
+                    </span>
+                  </div>
+                  <span className="px-2 py-0.5 rounded-full bg-fuchsia-400 text-purple-950 text-[10px] font-black uppercase">
+                    App Móvil
+                  </span>
+                </div>
+
+                <div className="text-center space-y-3">
+                  <p className="text-xs text-purple-200/90 leading-relaxed">
+                    Este es el código QR que se visualiza en la app ciudadana. Puedes descargarlo e imprimirlo para la caseta comunal.
+                  </p>
+
+                  {/* QR Image Box */}
+                  <div className="bg-white rounded-3xl p-4 shadow-xl inline-block border-4 border-fuchsia-400/40">
+                    {nequiQrDataUrl ? (
+                      <img
+                        src={nequiQrDataUrl}
+                        alt="Código QR de Nequi"
+                        className="w-48 h-48 mx-auto rounded-xl"
+                      />
+                    ) : (
+                      <div className="w-48 h-48 flex flex-col items-center justify-center text-slate-400 text-xs">
+                        <Smartphone className="w-8 h-8 mb-2 text-slate-300" />
+                        <span>Ingresa un número celular para generar el QR</span>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="space-y-1">
+                    <span className="text-[11px] uppercase tracking-wider text-purple-300 font-bold block">
+                      Número Nequi Registrado:
+                    </span>
+                    <div className="inline-flex items-center gap-2 bg-purple-900/60 px-4 py-1.5 rounded-xl border border-purple-700/50">
+                      <span className="text-lg font-black font-mono text-fuchsia-300">
+                        {nequiForm.phone || "Sin configurar"}
+                      </span>
+                      {nequiForm.phone && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            navigator.clipboard.writeText(nequiForm.phone);
+                            setCopiedNequi(true);
+                            setTimeout(() => setCopiedNequi(false), 2000);
+                          }}
+                          className="text-purple-300 hover:text-white"
+                          title="Copiar número"
+                        >
+                          {copiedNequi ? (
+                            <Check className="w-4 h-4 text-emerald-400" />
+                          ) : (
+                            <CreditCard className="w-4 h-4" />
+                          )}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="text-[11px] text-purple-300">
+                    Titular: <strong className="text-white">{nequiForm.holderName || "JAC Comunal"}</strong>
+                  </div>
+                </div>
+
+                {/* QR Action Buttons */}
+                <div className="pt-2 border-t border-purple-800/60 grid grid-cols-2 gap-2.5">
+                  {nequiQrDataUrl ? (
+                    <a
+                      href={nequiQrDataUrl}
+                      download={`QR_Nequi_${jacData?.name?.replace(/\s+/g, "_") || "JAC"}.png`}
+                      className="px-3.5 py-2.5 rounded-xl bg-fuchsia-500 hover:bg-fuchsia-600 text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-md transition text-center"
+                    >
+                      <Download className="w-4 h-4" />
+                      <span>Descargar QR</span>
+                    </a>
+                  ) : (
+                    <button
+                      disabled
+                      className="px-3.5 py-2.5 rounded-xl bg-purple-900/40 text-purple-400 font-bold text-xs flex items-center justify-center gap-1.5 opacity-50"
+                    >
+                      <Download className="w-4 h-4" />
+                      <span>Descargar QR</span>
+                    </button>
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={() => window.print()}
+                    className="px-3.5 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-white font-bold text-xs flex items-center justify-center gap-1.5 border border-white/20 transition"
+                  >
+                    <Printer className="w-4 h-4" />
+                    <span>Imprimir Afiche</span>
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
         </div>
