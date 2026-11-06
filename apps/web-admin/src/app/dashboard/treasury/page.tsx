@@ -157,6 +157,38 @@ interface PortfolioResponse {
   affiliates: PortfolioAffiliate[];
 }
 
+function buildNequiEmvcoQR(phone: string, name: string): string {
+  const cleanPhone = phone.replace(/\D/g, "");
+  const cleanName = (name || "JAC COMUNAL")
+    .substring(0, 25)
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^A-Za-z0-9 ]/g, "")
+    .toUpperCase();
+
+  const sub00 = "0014co.com.nequi";
+  const sub01 = `01${cleanPhone.length.toString().padStart(2, "0")}${cleanPhone}`;
+  const len26 = (sub00.length + sub01.length).toString().padStart(2, "0");
+  const tag26 = `26${len26}${sub00}${sub01}`;
+
+  const nameLen = cleanName.length.toString().padStart(2, "0");
+  const payload = `000201010211${tag26}5204000053031705802CO59${nameLen}${cleanName}6008COLOMBIA6304`;
+
+  let crc = 0xffff;
+  for (let i = 0; i < payload.length; i++) {
+    crc ^= payload.charCodeAt(i) << 8;
+    for (let j = 0; j < 8; j++) {
+      if ((crc & 0x8000) !== 0) {
+        crc = ((crc << 1) ^ 0x1021) & 0xffff;
+      } else {
+        crc = (crc << 1) & 0xffff;
+      }
+    }
+  }
+  const crcHex = crc.toString(16).toUpperCase().padStart(4, "0");
+  return payload + crcHex;
+}
+
 export default function TreasuryPage() {
   const queryClient = useQueryClient();
   const { currentJacId } = useAuthStore();
@@ -204,6 +236,7 @@ export default function TreasuryPage() {
     phone: "",
     holderName: "",
     bankName: "Nequi",
+    qrImageUrl: "",
   });
   const [bankAccountsList, setBankAccountsList] = useState<any[]>([]);
   const [nequiQrDataUrl, setNequiQrDataUrl] = useState<string>("");
@@ -241,15 +274,21 @@ export default function TreasuryPage() {
         phone: nequiAcc?.accountNumber || jacData.phone || "",
         holderName: nequiAcc?.holderName || `JAC ${jacData.name} - Tesorería`,
         bankName: nequiAcc?.bankName || "Nequi",
+        qrImageUrl: nequiAcc?.qrImageUrl || "",
       });
       setBankAccountsList(otherAccounts);
     }
   }, [jacData]);
 
   useEffect(() => {
+    if (nequiForm.qrImageUrl) {
+      setNequiQrDataUrl(nequiForm.qrImageUrl);
+      return;
+    }
+
     const rawNumber = nequiForm.phone.replace(/\D/g, "");
     if (rawNumber.length >= 7) {
-      const qrPayload = `nequi://send?phone=${rawNumber}&amount=10000`;
+      const qrPayload = buildNequiEmvcoQR(rawNumber, nequiForm.holderName);
       QRCode.toDataURL(qrPayload, {
         width: 350,
         margin: 2,
@@ -263,7 +302,7 @@ export default function TreasuryPage() {
     } else {
       setNequiQrDataUrl("");
     }
-  }, [nequiForm.phone]);
+  }, [nequiForm.phone, nequiForm.holderName, nequiForm.qrImageUrl]);
 
   const handleSaveAccounts = async () => {
     if (!currentJacId) return;
@@ -280,6 +319,7 @@ export default function TreasuryPage() {
                 holderName: nequiForm.holderName.trim() || jacData?.name || "Tesorero JAC",
                 holderNit: jacData?.nit || "",
                 isDigital: true,
+                qrImageUrl: nequiForm.qrImageUrl || "",
               },
             ]
           : []),
@@ -292,6 +332,7 @@ export default function TreasuryPage() {
             holderName: a.holderName?.trim() || jacData?.name || "JAC Comunal",
             holderNit: a.holderNit?.trim() || jacData?.nit || "",
             isDigital: false,
+            qrImageUrl: a.qrImageUrl || "",
           })),
       ];
 
@@ -1616,6 +1657,69 @@ export default function TreasuryPage() {
                       </select>
                     </div>
                   </div>
+
+                  {/* Upload Real Nequi QR Image */}
+                  <div className="pt-3 border-t border-slate-100 space-y-2.5">
+                    <div className="flex items-center justify-between">
+                      <label className="block text-xs font-bold text-slate-800">
+                        Imagen del QR Oficial de Nequi (Garantía de Reconocimiento al 100%)
+                      </label>
+                      {nequiForm.qrImageUrl && (
+                        <button
+                          type="button"
+                          onClick={() => setNequiForm((prev) => ({ ...prev, qrImageUrl: "" }))}
+                          className="text-[11px] text-rose-600 hover:underline font-bold"
+                        >
+                          Usar QR generado por defecto
+                        </button>
+                      )}
+                    </div>
+
+                    <div className="p-3.5 bg-purple-50/70 rounded-2xl border border-purple-200 text-xs text-purple-900 leading-relaxed space-y-1">
+                      <div className="font-bold flex items-center gap-1.5">
+                        <span>💡</span>
+                        <span>Para que cualquier celular reconozca el código al 100% con la cámara de Nequi o Bancolombia:</span>
+                      </div>
+                      <p className="text-[11px] text-purple-800 leading-relaxed">
+                        1. En tu celular abre tu app <strong>Nequi</strong> &gt; Toca en <strong>"Tu código QR"</strong> &gt; <strong>"Guardar imagen"</strong> o <strong>"Compartir"</strong>.<br />
+                        2. Sube esa imagen aquí con el botón morado. El sistema usará exactamente ese código oficial firmado por Nequi en la app móvil ciudadana y en el afiche para imprimir.
+                      </p>
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-3 pt-1">
+                      <label className="cursor-pointer inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs shadow-md shadow-purple-600/20 transition">
+                        <Upload className="w-4 h-4" />
+                        <span>{nequiForm.qrImageUrl ? "Cambiar Imagen Oficial de Nequi" : "Subir Imagen Oficial descargada de Nequi (PNG/JPG)"}</span>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (!file) return;
+                            const reader = new FileReader();
+                            reader.onload = (ev) => {
+                              const base64 = ev.target?.result as string;
+                              setNequiForm((prev) => ({ ...prev, qrImageUrl: base64 }));
+                            };
+                            reader.readAsDataURL(file);
+                          }}
+                        />
+                      </label>
+
+                      {nequiForm.qrImageUrl ? (
+                        <span className="text-xs text-emerald-700 font-bold flex items-center gap-1.5 bg-emerald-50 px-3 py-1.5 rounded-xl border border-emerald-200">
+                          <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                          <span>QR Oficial de Nequi Activo</span>
+                        </span>
+                      ) : (
+                        <span className="text-xs text-purple-700 font-medium flex items-center gap-1.5 bg-purple-100/50 px-3 py-1.5 rounded-xl">
+                          <QrCode className="w-4 h-4 text-purple-600" />
+                          <span>Usando Formato EMVCo Colombia Interoperable</span>
+                        </span>
+                      )}
+                    </div>
+                  </div>
                 </div>
               </div>
 
@@ -1762,8 +1866,12 @@ export default function TreasuryPage() {
                       Vista Previa Oficial del QR
                     </span>
                   </div>
-                  <span className="px-2 py-0.5 rounded-full bg-fuchsia-400 text-purple-950 text-[10px] font-black uppercase">
-                    App Móvil
+                  <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase ${
+                    nequiForm.qrImageUrl
+                      ? "bg-emerald-400 text-emerald-950"
+                      : "bg-fuchsia-400 text-purple-950"
+                  }`}>
+                    {nequiForm.qrImageUrl ? "QR Oficial Nequi" : "EMVCo Interoperable"}
                   </span>
                 </div>
 

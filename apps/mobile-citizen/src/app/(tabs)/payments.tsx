@@ -9,6 +9,7 @@ import {
   RefreshControl,
   Modal,
   Linking,
+  Image,
 } from "react-native";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import QRCode from "react-native-qrcode-svg";
@@ -28,6 +29,43 @@ import {
   Smartphone,
   Building,
 } from "lucide-react-native";
+
+function buildNequiEmvcoQR(phone: string, name: string, amount?: number): string {
+  const cleanPhone = phone.replace(/\D/g, "");
+  const cleanName = (name || "JAC COMUNAL")
+    .substring(0, 25)
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^A-Za-z0-9 ]/g, "")
+    .toUpperCase();
+
+  const sub00 = "0014co.com.nequi";
+  const sub01 = `01${cleanPhone.length.toString().padStart(2, "0")}${cleanPhone}`;
+  const len26 = (sub00.length + sub01.length).toString().padStart(2, "0");
+  const tag26 = `26${len26}${sub00}${sub01}`;
+
+  const nameLen = cleanName.length.toString().padStart(2, "0");
+  let payload = `000201010211${tag26}520400005303170`;
+  if (amount && amount > 0) {
+    const amtStr = String(Math.round(amount));
+    payload = `000201010212${tag26}52040000530317054${amtStr.length.toString().padStart(2, "0")}${amtStr}`;
+  }
+  payload += `5802CO59${nameLen}${cleanName}6008COLOMBIA6304`;
+
+  let crc = 0xffff;
+  for (let i = 0; i < payload.length; i++) {
+    crc ^= payload.charCodeAt(i) << 8;
+    for (let j = 0; j < 8; j++) {
+      if ((crc & 0x8000) !== 0) {
+        crc = ((crc << 1) ^ 0x1021) & 0xffff;
+      } else {
+        crc = (crc << 1) & 0xffff;
+      }
+    }
+  }
+  const crcHex = crc.toString(16).toUpperCase().padStart(4, "0");
+  return payload + crcHex;
+}
 
 interface ObligationItem {
   id: string;
@@ -50,6 +88,7 @@ interface BankAccountInfo {
   accountNumber: string;
   holderName: string;
   isDigital?: boolean;
+  qrImageUrl?: string;
 }
 
 interface MyObligationsResponse {
@@ -167,10 +206,18 @@ export default function PaymentsScreen() {
     });
   };
 
-  // QR Payload para Nequi
-  const qrNequiValue = `nequi://send?phone=${nequiAccount.accountNumber}&amount=${
-    selectedObligationForNequi?.pendingBalance || selectedObligationForNequi?.amount || totalDebt || 10000
-  }`;
+  // QR Payload para Nequi (EMVCo estándar para Colombia / Nequi / Bancolombia)
+  const amountToPay =
+    selectedObligationForNequi?.pendingBalance ||
+    selectedObligationForNequi?.amount ||
+    totalDebt ||
+    10000;
+
+  const qrNequiValue = buildNequiEmvcoQR(
+    nequiAccount.accountNumber,
+    nequiAccount.holderName,
+    amountToPay
+  );
 
   return (
     <ScrollView
@@ -452,27 +499,44 @@ export default function PaymentsScreen() {
 
             {/* QR Code */}
             <View className="bg-purple-50 rounded-2xl p-4 items-center justify-center border border-purple-200 shadow-inner">
-              <QRCode
-                value={qrNequiValue}
-                size={170}
-                color="#200020"
-                backgroundColor="#ffffff"
-              />
+              {nequiAccount.qrImageUrl ? (
+                <Image
+                  source={{ uri: nequiAccount.qrImageUrl }}
+                  style={{ width: 170, height: 170, borderRadius: 12 }}
+                  resizeMode="contain"
+                />
+              ) : (
+                <QRCode
+                  value={qrNequiValue}
+                  size={170}
+                  color="#200020"
+                  backgroundColor="#ffffff"
+                />
+              )}
               <Text className="text-[11px] font-bold text-purple-900 mt-3">
-                Escanea desde la App Nequi
+                {nequiAccount.qrImageUrl ? "QR Oficial de Nequi" : "Escanea desde la App Nequi"}
               </Text>
               <Text className="text-[10px] text-purple-700 text-center mt-0.5">
-                Usa la opción [Código QR] en tu app Nequi
+                Usa la opción [Código QR] en tu app Nequi o Bancolombia
               </Text>
             </View>
 
             {/* Payment Info */}
-            <View className="bg-slate-50 p-3.5 rounded-2xl border border-slate-200 space-y-1">
+            <View className="bg-slate-50 p-3.5 rounded-2xl border border-slate-200 space-y-1.5">
               <View className="flex-row justify-between items-center">
                 <Text className="text-[11px] text-slate-500">Número Nequi:</Text>
-                <Text className="font-mono font-black text-slate-900 text-sm">
-                  {nequiAccount.accountNumber}
-                </Text>
+                <TouchableOpacity
+                  onPress={() => handleCopyAccount(nequiAccount.accountNumber)}
+                  className="flex-row items-center space-x-1 bg-purple-100 px-2 py-0.5 rounded-md"
+                >
+                  <Text className="font-mono font-black text-purple-950 text-sm">
+                    {nequiAccount.accountNumber}
+                  </Text>
+                  <Copy color="#581c87" size={12} />
+                  {copiedText === nequiAccount.accountNumber && (
+                    <Text className="text-[10px] font-bold text-emerald-700 ml-1">¡Copiado!</Text>
+                  )}
+                </TouchableOpacity>
               </View>
               <View className="flex-row justify-between items-center">
                 <Text className="text-[11px] text-slate-500">Titular:</Text>
@@ -481,28 +545,38 @@ export default function PaymentsScreen() {
                 </Text>
               </View>
               <View className="flex-row justify-between items-center pt-1 border-t border-slate-200">
-                <Text className="text-[11px] font-bold text-slate-700">Monto sugerido:</Text>
+                <Text className="text-[11px] font-bold text-slate-700">Monto a pagar:</Text>
                 <Text className="font-black text-emerald-700 text-base">
-                  $
-                  {(
-                    selectedObligationForNequi?.pendingBalance ||
-                    selectedObligationForNequi?.amount ||
-                    totalDebt ||
-                    10000
-                  ).toLocaleString("es-CO")}{" "}
-                  COP
+                  ${amountToPay.toLocaleString("es-CO")} COP
                 </Text>
               </View>
             </View>
 
+            {/* Instruction Tip */}
+            <View className="p-2.5 bg-purple-50 rounded-xl border border-purple-200/60">
+              <Text className="text-[10px] text-purple-900 leading-relaxed text-center font-medium">
+                💡 Si estás en el mismo celular: copia el número, abre tu Nequi, ve a <Text className="font-bold">Envía &gt; A Nequi</Text> y pega el número para transferir.
+              </Text>
+            </View>
+
             {/* Action Buttons */}
-            <View className="space-y-2 pt-2">
+            <View className="space-y-2 pt-1">
+              <TouchableOpacity
+                onPress={() => handleCopyAccount(nequiAccount.accountNumber)}
+                className="w-full bg-purple-100 active:bg-purple-200 py-2.5 rounded-2xl flex-row items-center justify-center space-x-2 border border-purple-300"
+              >
+                <Copy color="#581c87" size={15} />
+                <Text className="text-purple-950 font-bold text-xs ml-1.5">
+                  Copiar Número Nequi ({nequiAccount.accountNumber})
+                </Text>
+              </TouchableOpacity>
+
               <TouchableOpacity
                 onPress={handleOpenNequi}
                 className="w-full bg-purple-900 active:bg-purple-950 py-3 rounded-2xl flex-row items-center justify-center space-x-2"
               >
                 <Smartphone color="#ffffff" size={16} />
-                <Text className="text-white font-bold text-xs ml-1.5">Abrir Nequi para Pagar</Text>
+                <Text className="text-white font-bold text-xs ml-1.5">Abrir App Nequi para Pagar</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
