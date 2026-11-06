@@ -279,10 +279,20 @@ export default function TreasuryPage() {
                 accountNumber: cleanPhone,
                 holderName: nequiForm.holderName.trim() || jacData?.name || "Tesorero JAC",
                 holderNit: jacData?.nit || "",
+                isDigital: true,
               },
             ]
           : []),
-        ...bankAccountsList.filter((a) => a.accountNumber?.trim()),
+        ...bankAccountsList
+          .filter((a) => a.accountNumber?.trim())
+          .map((a) => ({
+            bankName: a.bankName?.trim() || "Banco",
+            accountType: a.accountType || "Ahorros",
+            accountNumber: a.accountNumber.trim(),
+            holderName: a.holderName?.trim() || jacData?.name || "JAC Comunal",
+            holderNit: a.holderNit?.trim() || jacData?.nit || "",
+            isDigital: false,
+          })),
       ];
 
       await apiClient.patch(`/jacs/${currentJacId}/settings`, {

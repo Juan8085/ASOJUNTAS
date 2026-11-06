@@ -97,8 +97,9 @@ export const UpdateJacSettingsSchema = z.object({
     accountType: z.string(),
     accountNumber: z.string(),
     holderName: z.string(),
-    holderNit: z.string()
-  })).optional()
+    holderNit: z.string().optional().default(""),
+    isDigital: z.boolean().optional(),
+  }).passthrough()).optional()
 });
 
 // ==========================================

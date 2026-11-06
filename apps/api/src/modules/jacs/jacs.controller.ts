@@ -115,10 +115,9 @@ export class JacsController {
     description: "Permite a los directivos actualizar colores, sellos oficiales y datos bancarios para recaudo",
   })
   @ApiResponse({ status: 200, description: "Configuración actualizada con éxito" })
-  @UsePipes(new ZodValidationPipe(UpdateJacSettingsSchema))
   async updateSettings(
     @Param("id") id: string,
-    @Body() body: UpdateJacSettingsInput
+    @Body(new ZodValidationPipe(UpdateJacSettingsSchema)) body: UpdateJacSettingsInput
   ) {
     return this.jacsService.updateSettings(id, body);
   }

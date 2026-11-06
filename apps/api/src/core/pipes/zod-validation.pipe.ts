@@ -6,8 +6,9 @@ export class ZodValidationPipe implements PipeTransform {
   constructor(private schema: ZodSchema) {}
 
   transform(value: unknown, metadata?: ArgumentMetadata) {
-    // Si el parámetro proviene de un decorador personalizado (ej. @CurrentUser, @CurrentTenant), omitir la validación de esquema
-    if (metadata && metadata.type === "custom") {
+    // Si el parámetro proviene de un decorador personalizado (ej. @CurrentUser, @CurrentTenant)
+    // o es un parámetro de ruta (@Param), omitir la validación de esquema del body
+    if (metadata && (metadata.type === "custom" || metadata.type === "param")) {
       return value;
     }
 

@@ -254,7 +254,7 @@ export class JacsService {
         ...(input.logoUrl && { logoUrl: input.logoUrl }),
         ...(input.officialSealUrl && { officialSealUrl: input.officialSealUrl }),
         ...(input.primaryColor && { primaryColor: input.primaryColor }),
-        ...(input.bankAccounts && { bankAccounts: input.bankAccounts }),
+        ...(input.bankAccounts && { bankAccounts: input.bankAccounts as any }),
       },
     });
   }
