@@ -1,15 +1,42 @@
 import React, { useRef, useState } from "react";
-import { View, Text, ScrollView, TouchableOpacity, Share, ActivityIndicator, Alert } from "react-native";
+import { View, Text, ScrollView, TouchableOpacity, Share, ActivityIndicator, Alert, RefreshControl } from "react-native";
+import { useRouter } from "expo-router";
+import { useQuery } from "@tanstack/react-query";
 import QRCode from "react-native-qrcode-svg";
 import { File, Paths } from "expo-file-system";
 import * as Sharing from "expo-sharing";
+import { apiClient } from "../../lib/api-client";
 import { useAuthStore } from "../../lib/auth-store";
-import { ShieldCheck, Share2, Award, Calendar, MapPin, Hash, QrCode } from "lucide-react-native";
+import {
+  ShieldCheck,
+  Share2,
+  Award,
+  Calendar,
+  MapPin,
+  Hash,
+  QrCode,
+  Inbox,
+  Clock,
+  MessageSquare,
+  PlusCircle,
+  ChevronRight,
+} from "lucide-react-native";
 
 export default function CarnetScreen() {
+  const router = useRouter();
   const { user, currentMembership } = useAuthStore();
   const qrSvgRef = useRef<any>(null);
   const [isSharing, setIsSharing] = useState(false);
+
+  const { data: ticketsData, isLoading: loadingTickets, refetch: refetchTickets } = useQuery<any>({
+    queryKey: ["my-pqrsd-tickets", user?.id],
+    queryFn: () => apiClient.get("/pqrsd/my-tickets"),
+    enabled: !!user?.id,
+  });
+
+  const myTickets: any[] = Array.isArray(ticketsData)
+    ? ticketsData
+    : (ticketsData?.data || []);
 
   if (!user || !currentMembership) {
     return (
@@ -72,7 +99,11 @@ export default function CarnetScreen() {
   };
 
   return (
-    <ScrollView className="flex-1 bg-slate-900" contentContainerStyle={{ padding: 20, paddingBottom: 60 }}>
+    <ScrollView
+      className="flex-1 bg-slate-900"
+      contentContainerStyle={{ padding: 20, paddingBottom: 60 }}
+      refreshControl={<RefreshControl refreshing={loadingTickets} onRefresh={refetchTickets} tintColor="#34d399" />}
+    >
       {/* Title */}
       <View className="items-center mb-6">
         <View className="flex-row items-center space-x-1.5 bg-emerald-500/20 border border-emerald-500/30 px-3 py-1 rounded-full mb-2">
@@ -212,6 +243,156 @@ export default function CarnetScreen() {
           </>
         )}
       </TouchableOpacity>
+
+      {/* Section: Mis Solicitudes y PQRSD Radicados */}
+      <View className="mt-8">
+        <View className="flex-row items-center justify-between mb-3">
+          <View className="flex-row items-center">
+            <View className="w-8 h-8 rounded-xl bg-emerald-500/20 items-center justify-center">
+              <Inbox color="#34d399" size={17} />
+            </View>
+            <View className="ml-2.5">
+              <Text className="text-white font-bold text-base">
+                Mis Solicitudes y PQRSD
+              </Text>
+              <Text className="text-slate-400 text-[11px]">
+                Trámites ciudadanos radicados ante la JAC
+              </Text>
+            </View>
+          </View>
+          {myTickets.length > 0 && (
+            <View className="bg-emerald-500/20 border border-emerald-500/40 px-2.5 py-0.5 rounded-full">
+              <Text className="text-emerald-300 font-bold text-xs">
+                {myTickets.length} radicado(s)
+              </Text>
+            </View>
+          )}
+        </View>
+
+        {loadingTickets ? (
+          <ActivityIndicator color="#34d399" className="py-6" />
+        ) : myTickets.length === 0 ? (
+          <View className="bg-slate-800/90 rounded-2xl border border-slate-700/80 p-5 items-center text-center">
+            <Inbox color="#64748b" size={28} />
+            <Text className="text-slate-300 font-bold text-xs mt-2">
+              No tienes solicitudes PQRSD radicadas
+            </Text>
+            <Text className="text-slate-500 text-[11px] text-center mt-1 leading-relaxed">
+              Puedes radicar peticiones, quejas, reclamos o sugerencias formales ante la Mesa Directiva de tu JAC.
+            </Text>
+            <TouchableOpacity
+              onPress={() => router.push("/(tabs)/comunidad")}
+              className="mt-3.5 bg-emerald-600/90 active:bg-emerald-700 px-4 py-2.5 rounded-xl flex-row items-center space-x-1.5"
+            >
+              <PlusCircle color="#ffffff" size={14} />
+              <Text className="text-white font-bold text-xs ml-1">Radicar Solicitud PQRSD</Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <View className="space-y-3">
+            {myTickets.map((ticket: any) => (
+              <View
+                key={ticket.id}
+                className="bg-slate-800 rounded-2xl border border-slate-700/80 p-4 shadow-md"
+              >
+                <View className="flex-row justify-between items-center mb-1.5">
+                  <View className="flex-row items-center space-x-2">
+                    <Text className="font-mono text-xs font-black text-emerald-400">
+                      {ticket.ticketNumber || ticket.radicadoNumber}
+                    </Text>
+                    <View className="bg-slate-700/80 px-2 py-0.5 rounded-md ml-1.5">
+                      <Text className="text-[10px] font-bold text-slate-300 uppercase">
+                        {ticket.type === "PETITION"
+                          ? "Petición"
+                          : ticket.type === "COMPLAINT"
+                          ? "Queja"
+                          : ticket.type === "CLAIM"
+                          ? "Reclamo"
+                          : ticket.type === "SUGGESTION"
+                          ? "Sugerencia"
+                          : "Denuncia"}
+                      </Text>
+                    </View>
+                  </View>
+
+                  <View
+                    className={`px-2.5 py-0.5 rounded-full ${
+                      ticket.status === "RESOLVED"
+                        ? "bg-emerald-500/20 border border-emerald-500/40"
+                        : ticket.status === "IN_REVIEW"
+                        ? "bg-amber-500/20 border border-amber-500/40"
+                        : "bg-blue-500/20 border border-blue-500/40"
+                    }`}
+                  >
+                    <Text
+                      className={`text-[10px] font-black uppercase ${
+                        ticket.status === "RESOLVED"
+                          ? "text-emerald-300"
+                          : ticket.status === "IN_REVIEW"
+                          ? "text-amber-300"
+                          : "text-blue-300"
+                      }`}
+                    >
+                      {ticket.status === "RECEIVED"
+                        ? "Recibido"
+                        : ticket.status === "IN_REVIEW"
+                        ? "En Trámite"
+                        : ticket.status === "RESOLVED"
+                        ? "Resuelto"
+                        : ticket.status}
+                    </Text>
+                  </View>
+                </View>
+
+                <Text className="text-sm font-bold text-white mb-1">
+                  {ticket.subject}
+                </Text>
+                <Text className="text-xs text-slate-300 leading-relaxed">
+                  {ticket.description}
+                </Text>
+
+                {ticket.createdAt && (
+                  <View className="flex-row items-center mt-2.5 pt-2 border-t border-slate-700/60">
+                    <Clock color="#94a3b8" size={11} />
+                    <Text className="text-slate-400 text-[10px] ml-1">
+                      Radicado el {new Date(ticket.createdAt).toLocaleDateString("es-CO", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}
+                    </Text>
+                  </View>
+                )}
+
+                {ticket.responseText && (
+                  <View className="mt-3 p-3 rounded-xl bg-emerald-950/70 border border-emerald-500/40">
+                    <View className="flex-row items-center mb-1">
+                      <MessageSquare color="#34d399" size={13} />
+                      <Text className="text-[10px] font-black text-emerald-300 uppercase tracking-wider ml-1.5">
+                        Respuesta Oficial de la JAC:
+                      </Text>
+                    </View>
+                    <Text className="text-xs text-emerald-100 leading-relaxed">
+                      {ticket.responseText}
+                    </Text>
+                    {ticket.respondedAt && (
+                      <Text className="text-[9px] text-emerald-400/80 mt-1">
+                        Respondido el {new Date(ticket.respondedAt).toLocaleDateString("es-CO")}
+                      </Text>
+                    )}
+                  </View>
+                )}
+              </View>
+            ))}
+
+            <TouchableOpacity
+              onPress={() => router.push("/(tabs)/comunidad")}
+              className="mt-2 py-2.5 rounded-xl border border-dashed border-slate-700 items-center justify-center flex-row space-x-1.5"
+            >
+              <PlusCircle color="#34d399" size={14} />
+              <Text className="text-emerald-400 font-bold text-xs ml-1">
+                Radicar otra PQRSD ante la JAC
+              </Text>
+            </TouchableOpacity>
+          </View>
+        )}
+      </View>
     </ScrollView>
   );
 }

@@ -93,7 +93,7 @@ export class PqrsdService {
    * Mis solicitudes radicadas (Ciudadano)
    */
   async getMyTickets(userId: string) {
-    return this.prisma.pqrsdTicket.findMany({
+    const tickets = await this.prisma.pqrsdTicket.findMany({
       where: { userId },
       include: {
         jac: {
@@ -106,6 +106,7 @@ export class PqrsdService {
       },
       orderBy: { createdAt: "desc" },
     });
+    return { data: tickets };
   }
 
   /**

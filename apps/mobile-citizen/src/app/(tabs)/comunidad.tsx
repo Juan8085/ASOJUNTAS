@@ -65,12 +65,10 @@ export default function ComunidadScreen() {
   });
 
   // PQRSD query
-  const { data: pqrsdData, isLoading: loadingPqrsd, refetch: refetchPqrsd } = useQuery<{
-    data: any[];
-  }>({
+  const { data: pqrsdData, isLoading: loadingPqrsd, refetch: refetchPqrsd } = useQuery<any>({
     queryKey: ["pqrsd-citizen", currentMembership?.jacId],
     queryFn: () => apiClient.get("/pqrsd/my-tickets"),
-    enabled: !!currentMembership?.jacId && activeTab === "PQRSD",
+    enabled: !!currentMembership?.jacId,
   });
 
   // Attendance confirmation mutation
@@ -98,6 +96,7 @@ export default function ComunidadScreen() {
       }),
     onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: ["pqrsd-citizen"] });
+      queryClient.invalidateQueries({ queryKey: ["my-pqrsd-tickets"] });
       setIsPqrsdModalOpen(false);
       setNewPqrsd({
         type: PqrsdType.PETITION,
@@ -123,9 +122,9 @@ export default function ComunidadScreen() {
     createPqrsdMutation.mutate(newPqrsd);
   };
 
-  const mingas = mingasData?.data || [];
-  const assemblies = assembliesData?.data || [];
-  const tickets = pqrsdData?.data || [];
+  const mingas = Array.isArray(mingasData) ? mingasData : (mingasData as any)?.data || [];
+  const assemblies = Array.isArray(assembliesData) ? assembliesData : (assembliesData as any)?.data || [];
+  const tickets = Array.isArray(pqrsdData) ? pqrsdData : (pqrsdData as any)?.data || [];
 
   const pqrsdTypeLabels: Record<string, string> = {
     PETITION: "Petición",
