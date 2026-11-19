@@ -201,7 +201,7 @@ export class MarketplaceController {
     description: "Permite a los directivos vigilar y moderar los productos de su vereda conforme a la Ley 2166",
   })
   async getAdminProducts(
-    @CurrentTenant() jacId: string,
+    @CurrentTenant() jacId?: string,
     @Query("search") search?: string,
     @Query("status") status?: string
   ) {
@@ -266,7 +266,7 @@ export class MarketplaceController {
     description: "Permite a los directivos vigilar las transacciones y pedidos del mercado comunal",
   })
   async getAdminOrders(
-    @CurrentTenant() jacId: string,
+    @CurrentTenant() jacId?: string,
     @Query("search") search?: string,
     @Query("status") status?: MarketOrderStatus
   ) {

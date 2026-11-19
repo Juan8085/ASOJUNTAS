@@ -191,7 +191,7 @@ function buildNequiEmvcoQR(phone: string, name: string): string {
 
 export default function TreasuryPage() {
   const queryClient = useQueryClient();
-  const { currentJacId } = useAuthStore();
+  const { currentJacId, isSuperAdmin } = useAuthStore();
   const [activeTab, setActiveTab] = useState<
     "portfolio" | "receipts" | "movements" | "movement_form" | "fees" | "nequi_qr"
   >("portfolio");
@@ -356,7 +356,7 @@ export default function TreasuryPage() {
   const { data: accounts } = useQuery<TreasuryAccountItem[]>({
     queryKey: ["treasury-accounts", currentJacId],
     queryFn: () => apiClient("/treasury/accounts"),
-    enabled: Boolean(currentJacId),
+    enabled: Boolean(currentJacId || isSuperAdmin),
   });
 
   const { data: portfolioData, isLoading: isLoadingPortfolio, refetch: refetchPortfolio } = useQuery<PortfolioResponse>({
@@ -365,7 +365,7 @@ export default function TreasuryPage() {
       apiClient("/treasury/affiliates-portfolio", {
         params: portfolioSearch ? { search: portfolioSearch } : undefined,
       }),
-    enabled: Boolean(currentJacId),
+    enabled: Boolean(currentJacId || isSuperAdmin),
   });
 
   const { data: receiptsData, isLoading: isLoadingReceipts } = useQuery<PaymentReceiptItem[]>({
@@ -374,19 +374,19 @@ export default function TreasuryPage() {
       apiClient("/treasury/receipts", {
         params: receiptSearch ? { search: receiptSearch } : undefined,
       }),
-    enabled: Boolean(currentJacId),
+    enabled: Boolean(currentJacId || isSuperAdmin),
   });
 
   const { data: movementsData, isLoading: isLoadingMovements } = useQuery<MovementsResponse>({
     queryKey: ["treasury-movements", currentJacId],
     queryFn: () => apiClient("/treasury/movements", { params: { excludeFees: "true" } }),
-    enabled: Boolean(currentJacId),
+    enabled: Boolean(currentJacId || isSuperAdmin),
   });
 
   const { data: feeConfigs, refetch: refetchFees } = useQuery<FeeConfigItem[]>({
     queryKey: ["fee-configs", currentJacId],
     queryFn: () => apiClient("/treasury/fees"),
-    enabled: Boolean(currentJacId),
+    enabled: Boolean(currentJacId || isSuperAdmin),
   });
 
   // Auto-select account when opening payment modal
@@ -1001,7 +1001,12 @@ export default function TreasuryPage() {
                           </div>
                         </td>
                         <td className="py-3.5 px-4 text-slate-600">
-                          {aff.veredaOrBarrio || aff.address}
+                          <div className="font-medium text-slate-800">{aff.veredaOrBarrio || aff.address}</div>
+                          {!currentJacId && (aff as any).jac?.name && (
+                            <span className="inline-block mt-0.5 text-[10px] font-semibold text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200">
+                              {(aff as any).jac.name}
+                            </span>
+                          )}
                         </td>
                         <td className="py-3.5 px-4 text-center">
                           {aff.pendingQuotasCount === 0 ? (

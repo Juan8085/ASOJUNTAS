@@ -103,7 +103,7 @@ export class TreasuryController {
     summary: "Listar cuotas vigentes de la JAC",
     description: "Permite consultar los tipos de cuotas aprobados por la asamblea y su caducidad",
   })
-  async getFeeConfigs(@CurrentTenant() jacId: string) {
+  async getFeeConfigs(@CurrentTenant() jacId?: string) {
     return this.treasuryService.getFeeConfigs(jacId);
   }
 
@@ -144,7 +144,7 @@ export class TreasuryController {
     description: "Lista de todos los afiliados con su saldo deudor, cuotas pendientes y estado de morosidad",
   })
   async getAffiliatesPortfolio(
-    @CurrentTenant() jacId: string,
+    @CurrentTenant() jacId?: string,
     @Query("search") search?: string
   ) {
     return this.treasuryService.getAffiliatesPortfolio(jacId, search);
@@ -164,7 +164,7 @@ export class TreasuryController {
     description: "Lista de todos los pagos registrados con soporte de comprobante y detalle de cuotas/adelantos",
   })
   async getReceipts(
-    @CurrentTenant() jacId: string,
+    @CurrentTenant() jacId?: string,
     @Query("search") search?: string
   ) {
     return this.treasuryService.getReceipts(jacId, search);
@@ -240,7 +240,7 @@ export class TreasuryController {
     summary: "Consultar cuentas y balances de tesorería",
     description: "Caja general, cuentas bancarias y fondos de proyectos comunales",
   })
-  async getAccounts(@CurrentTenant() jacId: string) {
+  async getAccounts(@CurrentTenant() jacId?: string) {
     return this.treasuryService.getAccounts(jacId);
   }
 
@@ -280,7 +280,7 @@ export class TreasuryController {
   @ApiQuery({ name: "type", required: false, enum: TreasuryTransactionType })
   @ApiQuery({ name: "excludeFees", required: false, type: Boolean })
   async getMovements(
-    @CurrentTenant() jacId: string,
+    @CurrentTenant() jacId: string | undefined,
     @Query("page") page?: number,
     @Query("limit") limit?: number,
     @Query("accountId") accountId?: string,
@@ -329,7 +329,7 @@ export class TreasuryController {
     summary: "Informe financiero consolidado de la JAC",
     description: "Resumen de saldos totales y porcentaje de recaudo para presentación a la Asamblea General",
   })
-  async getFinancialSummary(@CurrentTenant() jacId: string) {
+  async getFinancialSummary(@CurrentTenant() jacId?: string) {
     return this.treasuryService.getFinancialSummary(jacId);
   }
 }

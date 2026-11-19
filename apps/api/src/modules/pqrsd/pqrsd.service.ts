@@ -58,16 +58,23 @@ export class PqrsdService {
    * Listar solicitudes de la JAC (Directivos)
    */
   async getTickets(
-    jacId: string,
+    jacId?: string | null,
     query?: { status?: PqrsdStatus; type?: PqrsdType }
   ) {
     return this.prisma.pqrsdTicket.findMany({
       where: {
-        jacId,
+        ...(jacId && jacId !== "all" ? { jacId } : {}),
         ...(query?.status && { status: query.status }),
         ...(query?.type && { type: query.type }),
       },
       include: {
+        jac: {
+          select: {
+            id: true,
+            name: true,
+            veredaOrBarrio: true,
+          },
+        },
         user: {
           select: {
             id: true,

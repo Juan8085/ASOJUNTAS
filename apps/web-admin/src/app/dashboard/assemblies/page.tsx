@@ -34,7 +34,7 @@ interface AssemblyItem {
 
 export default function AssembliesPage() {
   const queryClient = useQueryClient();
-  const { currentJacId } = useAuthStore();
+  const { currentJacId, isSuperAdmin } = useAuthStore();
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
 
@@ -50,7 +50,7 @@ export default function AssembliesPage() {
   const { data: assemblies, isLoading } = useQuery<AssemblyItem[]>({
     queryKey: ["assemblies", currentJacId],
     queryFn: () => apiClient("/assemblies"),
-    enabled: Boolean(currentJacId),
+    enabled: Boolean(currentJacId || isSuperAdmin),
   });
 
   const createMutation = useMutation({

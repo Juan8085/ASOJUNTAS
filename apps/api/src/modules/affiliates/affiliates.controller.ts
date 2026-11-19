@@ -66,7 +66,7 @@ export class AffiliatesController {
   @ApiQuery({ name: "status", required: false, enum: MembershipStatus })
   @ApiQuery({ name: "role", required: false, enum: UserRole })
   async getBook(
-    @CurrentTenant() jacId: string,
+    @CurrentTenant() jacId?: string,
     @Query("page") page?: number,
     @Query("limit") limit?: number,
     @Query("search") search?: string,
@@ -97,7 +97,7 @@ export class AffiliatesController {
     description: "Obtiene los datos completos del Libro Digital para un afiliado específico",
   })
   async getEntryById(
-    @CurrentTenant() jacId: string,
+    @CurrentTenant() jacId: string | undefined,
     @Param("id") id: string
   ) {
     return this.affiliatesService.getEntryById(jacId, id);
@@ -118,7 +118,7 @@ export class AffiliatesController {
     description: "Obtiene histórico de cuotas (pasadas, vigentes y adelantadas) y recibos de pago",
   })
   async getAffiliateStatement(
-    @CurrentTenant() jacId: string,
+    @CurrentTenant() jacId: string | undefined,
     @Param("id") id: string
   ) {
     return this.affiliatesService.getAffiliateStatement(jacId, id);
@@ -197,7 +197,7 @@ export class AffiliatesController {
     description: "Permite a los directivos restablecer o asignar un nuevo PIN de 4 dígitos para que el afiliado ingrese a la app móvil",
   })
   async resetAffiliatePin(
-    @CurrentTenant() jacId: string,
+    @CurrentTenant() jacId: string | undefined,
     @Param("id") id: string,
     @Body() body?: { pin?: string }
   ) {

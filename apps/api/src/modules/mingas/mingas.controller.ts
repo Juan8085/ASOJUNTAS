@@ -63,7 +63,7 @@ export class MingasController {
     summary: "Listar mingas de la vereda o barrio",
     description: "Permite ver trabajos comunitarios programados y pasados con total de confirmados y asistentes",
   })
-  async getMingas(@CurrentTenant() jacId: string) {
+  async getMingas(@CurrentTenant() jacId?: string) {
     return this.mingasService.getMingas(jacId);
   }
 

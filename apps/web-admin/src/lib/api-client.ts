@@ -22,7 +22,7 @@ export async function apiClient<T>(
   endpoint: string,
   options: RequestOptions = {}
 ): Promise<T> {
-  const { tokens, currentJacId, logout } = useAuthStore.getState();
+  const { tokens, currentJacId, isSuperAdmin, logout } = useAuthStore.getState();
 
   const baseUrl = getApiBaseUrl();
   let url = endpoint.startsWith("http")
@@ -54,6 +54,8 @@ export async function apiClient<T>(
 
   if (currentJacId) {
     headers.set("x-tenant-id", currentJacId);
+  } else if (isSuperAdmin) {
+    headers.set("x-tenant-id", "all");
   }
 
   const response = await fetch(url, {

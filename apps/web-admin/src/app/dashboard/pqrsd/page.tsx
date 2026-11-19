@@ -27,12 +27,13 @@ interface PqrsdTicketItem {
   responseText?: string;
   respondedAt?: string;
   createdAt: string;
+  jac?: { id: string; name: string; veredaOrBarrio: string };
   user?: { firstName: string; lastName: string; phone: string; email?: string };
 }
 
 export default function PqrsdPage() {
   const queryClient = useQueryClient();
-  const { currentJacId } = useAuthStore();
+  const { currentJacId, isSuperAdmin } = useAuthStore();
   const [selectedTicket, setSelectedTicket] = useState<PqrsdTicketItem | null>(null);
   const [responseText, setResponseText] = useState("");
   const [newStatus, setNewStatus] = useState<PqrsdStatus>(PqrsdStatus.RESOLVED);
@@ -41,7 +42,7 @@ export default function PqrsdPage() {
   const { data: tickets, isLoading } = useQuery<PqrsdTicketItem[]>({
     queryKey: ["pqrsd-tickets", currentJacId],
     queryFn: () => apiClient("/pqrsd"),
-    enabled: Boolean(currentJacId),
+    enabled: Boolean(currentJacId || isSuperAdmin),
   });
 
   const respondMutation = useMutation({

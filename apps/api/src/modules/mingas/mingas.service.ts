@@ -250,10 +250,16 @@ export class MingasService {
   /**
    * Listar mingas de la JAC con estadísticas de asistencia
    */
-  async getMingas(jacId: string) {
+  async getMingas(jacId?: string | null) {
     const mingas = await this.prisma.post.findMany({
-      where: { jacId, type: PostType.COMMUNAL_WORK },
+      where: {
+        ...(jacId && jacId !== "all" ? { jacId } : {}),
+        type: PostType.COMMUNAL_WORK,
+      },
       include: {
+        jac: {
+          select: { id: true, name: true, veredaOrBarrio: true },
+        },
         author: {
           select: { firstName: true, lastName: true },
         },

@@ -19,12 +19,16 @@ export class TenantGuard implements CanActivate {
     // Determinar tenant preferido
     const targetTenantId = headerTenantId || user?.currentJacId;
 
-    // Si el usuario es SUPER_ADMIN (Asojuntas), puede operar sin tenant o asumir cualquiera
+    // Si el usuario es SUPER_ADMIN (Asojuntas), puede operar en modo consolidado (sin tenant) o asumir cualquiera
     const isSuperAdmin = user?.roles.some((r) => r.role === UserRole.SUPER_ADMIN);
     request.isSuperAdmin = Boolean(isSuperAdmin);
 
     if (isSuperAdmin) {
-      request.tenantId = targetTenantId || null;
+      if (headerTenantId === "all" || headerTenantId === "" || (!headerTenantId && !user?.currentJacId)) {
+        request.tenantId = null;
+      } else {
+        request.tenantId = (targetTenantId && targetTenantId !== "all") ? targetTenantId : null;
+      }
       return true;
     }
 

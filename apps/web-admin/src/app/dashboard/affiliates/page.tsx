@@ -55,6 +55,11 @@ interface AffiliateItem {
   latitude?: number;
   longitude?: number;
   observations?: string;
+  jac?: {
+    id: string;
+    name: string;
+    veredaOrBarrio: string;
+  };
   user: {
     id: string;
     identificationType: string;
@@ -149,7 +154,7 @@ interface AffiliateStatementResponse {
 
 export default function AffiliatesBookPage() {
   const queryClient = useQueryClient();
-  const { currentJacId } = useAuthStore();
+  const { currentJacId, isSuperAdmin } = useAuthStore();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("");
   const [page, setPage] = useState(1);
@@ -225,7 +230,7 @@ export default function AffiliatesBookPage() {
           limit: 15,
         },
       }),
-    enabled: Boolean(currentJacId),
+    enabled: Boolean(currentJacId || isSuperAdmin),
   });
 
   // Query for selected affiliate statement
@@ -311,7 +316,9 @@ export default function AffiliatesBookPage() {
 
   const handleExportBookExcel = () => {
     if (!data?.data || data.data.length === 0) return;
+    const isConsolidated = !currentJacId;
     const headers = [
+      ...(isConsolidated ? ["JAC"] : []),
       "Folio",
       "Tipo Documento",
       "Número Documento",
@@ -330,6 +337,7 @@ export default function AffiliatesBookPage() {
     ];
 
     const rows = data.data.map((item: AffiliateItem) => [
+      ...(isConsolidated ? [item.jac?.name || item.veredaOrBarrio || ""] : []),
       item.folioNumber,
       item.user.identificationType,
       item.user.identificationNumber,
@@ -543,7 +551,12 @@ export default function AffiliatesBookPage() {
                         {item.user.identificationType}: {item.user.identificationNumber}
                       </td>
                       <td className="py-3.5 px-4 text-slate-700">
-                        {item.veredaOrBarrio}
+                        <div className="font-medium text-slate-800">{item.veredaOrBarrio}</div>
+                        {!currentJacId && item.jac?.name && (
+                          <span className="inline-block mt-0.5 text-[10px] font-semibold text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200">
+                            {item.jac.name}
+                          </span>
+                        )}
                       </td>
                       <td className="py-3.5 px-4 text-slate-500 text-xs">
                         {item.farmName ? (

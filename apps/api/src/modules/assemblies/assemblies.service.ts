@@ -274,13 +274,16 @@ export class AssembliesService {
   /**
    * Listar asambleas de la JAC
    */
-  async getAssemblies(jacId: string, status?: AssemblyStatus) {
+  async getAssemblies(jacId?: string | null, status?: AssemblyStatus) {
     return this.prisma.assembly.findMany({
       where: {
-        jacId,
+        ...(jacId && jacId !== "all" ? { jacId } : {}),
         ...(status && { status }),
       },
       include: {
+        jac: {
+          select: { id: true, name: true, veredaOrBarrio: true },
+        },
         _count: {
           select: { topics: true },
         },

@@ -65,7 +65,7 @@ export class AssembliesController {
   })
   @ApiQuery({ name: "status", required: false, enum: AssemblyStatus })
   async getAssemblies(
-    @CurrentTenant() jacId: string,
+    @CurrentTenant() jacId?: string,
     @Query("status") status?: AssemblyStatus
   ) {
     return this.assembliesService.getAssemblies(jacId, status);

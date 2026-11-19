@@ -83,9 +83,9 @@ export class TreasuryService {
   /**
    * Listar cuotas configuradas en la JAC con cálculo de caducidad estatutaria
    */
-  async getFeeConfigs(jacId: string) {
+  async getFeeConfigs(jacId?: string | null) {
     const configs = await this.prisma.feeConfiguration.findMany({
-      where: { jacId },
+      where: { ...(jacId && jacId !== "all" ? { jacId } : {}) },
       orderBy: { createdAt: "desc" },
     });
 
@@ -177,10 +177,10 @@ export class TreasuryService {
   /**
    * Obtener cartera detallada de todos los afiliados: deuda pendiente, cuotas en mora y estado
    */
-  async getAffiliatesPortfolio(jacId: string, search?: string) {
+  async getAffiliatesPortfolio(jacId?: string | null, search?: string) {
     const members = await this.prisma.jacMembership.findMany({
       where: {
-        jacId,
+        ...(jacId && jacId !== "all" ? { jacId } : {}),
         ...(search
           ? {
               OR: [
@@ -193,6 +193,13 @@ export class TreasuryService {
           : {}),
       },
       include: {
+        jac: {
+          select: {
+            id: true,
+            name: true,
+            veredaOrBarrio: true,
+          },
+        },
         user: {
           select: {
             id: true,
@@ -211,7 +218,7 @@ export class TreasuryService {
     // Cargar obligaciones pendientes o parcialmente pagadas de la JAC
     const pendingObligations = await this.prisma.userFeeObligation.findMany({
       where: {
-        jacId,
+        ...(jacId && jacId !== "all" ? { jacId } : {}),
         status: { in: [ObligationStatus.PENDING, ObligationStatus.PARTIALLY_PAID, ObligationStatus.OVERDUE] },
       },
       include: {
@@ -232,7 +239,7 @@ export class TreasuryService {
     // Cargar obligaciones pagadas con periodos futuros (adelantos)
     const advanceObligations = await this.prisma.userFeeObligation.findMany({
       where: {
-        jacId,
+        ...(jacId && jacId !== "all" ? { jacId } : {}),
         status: ObligationStatus.PAID,
         period: { gt: currentPeriodStr },
       },
@@ -286,6 +293,7 @@ export class TreasuryService {
 
       return {
         membershipId: member.id,
+        jac: member.jac,
         userId: member.user.id,
         folioNumber: member.folioNumber,
         bookNumber: member.bookNumber,
@@ -630,10 +638,10 @@ export class TreasuryService {
   /**
    * Listar todos los recibos y pagos de cuotas emitidos en la JAC (Auditoría & Comprobantes)
    */
-  async getReceipts(jacId: string, search?: string) {
+  async getReceipts(jacId?: string | null, search?: string) {
     const transactions = await this.prisma.paymentTransaction.findMany({
       where: {
-        jacId,
+        ...(jacId && jacId !== "all" ? { jacId } : {}),
         ...(search
           ? {
               OR: [
@@ -646,6 +654,13 @@ export class TreasuryService {
           : {}),
       },
       include: {
+        jac: {
+          select: {
+            id: true,
+            name: true,
+            veredaOrBarrio: true,
+          },
+        },
         user: {
           select: {
             id: true,
@@ -654,7 +669,7 @@ export class TreasuryService {
             identificationType: true,
             identificationNumber: true,
             memberships: {
-              where: { jacId },
+              where: { ...(jacId && jacId !== "all" ? { jacId } : {}) },
               select: { folioNumber: true, veredaOrBarrio: true, address: true },
             },
           },
@@ -676,6 +691,7 @@ export class TreasuryService {
 
       return {
         id: tx.id,
+        jac: tx.jac,
         receiptNumber: tx.receiptNumber || `REC-${tx.id.slice(-6)}`,
         paidAt: tx.paidAt || tx.createdAt,
         amount: tx.amount,
@@ -933,9 +949,9 @@ export class TreasuryService {
   /**
    * Listar cuentas de tesorería y saldos
    */
-  async getAccounts(jacId: string) {
+  async getAccounts(jacId?: string | null) {
     return this.prisma.treasuryAccount.findMany({
-      where: { jacId },
+      where: { ...(jacId && jacId !== "all" ? { jacId } : {}) },
       orderBy: { createdAt: "asc" },
     });
   }
@@ -1001,8 +1017,8 @@ export class TreasuryService {
    * Segrega cuotas ordinarias y de afiliación si excludeFees es true
    */
   async getMovements(
-    jacId: string,
-    query: {
+    jacId?: string | null,
+    query?: {
       page?: number;
       limit?: number;
       accountId?: string;
@@ -1010,16 +1026,16 @@ export class TreasuryService {
       excludeFees?: boolean;
     }
   ) {
-    const page = Math.max(1, query.page ? Number(query.page) : 1);
-    const limit = Math.max(1, Math.min(100, query.limit ? Number(query.limit) : 20));
+    const page = Math.max(1, query?.page ? Number(query.page) : 1);
+    const limit = Math.max(1, Math.min(100, query?.limit ? Number(query.limit) : 20));
     const skip = (page - 1) * limit;
 
-    const shouldExcludeFees = query.excludeFees !== false;
+    const shouldExcludeFees = query?.excludeFees !== false;
 
     const whereClause: Record<string, unknown> = {
-      jacId,
-      ...(query.accountId && { accountId: query.accountId }),
-      ...(query.type && { type: query.type }),
+      ...(jacId && jacId !== "all" ? { jacId } : {}),
+      ...(query?.accountId && { accountId: query.accountId }),
+      ...(query?.type && { type: query.type }),
       ...(shouldExcludeFees
         ? {
             category: {
@@ -1057,19 +1073,19 @@ export class TreasuryService {
   /**
    * Resumen financiero de la JAC (Informe para Asamblea General)
    */
-  async getFinancialSummary(jacId: string) {
+  async getFinancialSummary(jacId?: string | null) {
     const accounts = await this.prisma.treasuryAccount.findMany({
-      where: { jacId, isActive: true },
+      where: { ...(jacId && jacId !== "all" ? { jacId } : {}), isActive: true },
     });
 
     const totalBalance = accounts.reduce((acc, curr) => acc + Number(curr.balance), 0);
 
     const pendingObligationsCount = await this.prisma.userFeeObligation.count({
-      where: { jacId, status: ObligationStatus.PENDING },
+      where: { ...(jacId && jacId !== "all" ? { jacId } : {}), status: ObligationStatus.PENDING },
     });
 
     const paidObligationsCount = await this.prisma.userFeeObligation.count({
-      where: { jacId, status: ObligationStatus.PAID },
+      where: { ...(jacId && jacId !== "all" ? { jacId } : {}), status: ObligationStatus.PAID },
     });
 
     return {

@@ -62,7 +62,7 @@ interface AdminMarketProduct {
 
 export default function MarketplaceAdminPage() {
   const queryClient = useQueryClient();
-  const { currentJacId } = useAuthStore();
+  const { currentJacId, isSuperAdmin } = useAuthStore();
 
   const [viewTab, setViewTab] = useState<"products" | "orders">("products");
   const [search, setSearch] = useState("");
@@ -80,7 +80,7 @@ export default function MarketplaceAdminPage() {
       apiClient.get(
         `/marketplace/admin/products?search=${encodeURIComponent(search)}&status=${statusFilter}`
       ),
-    enabled: Boolean(currentJacId),
+    enabled: Boolean(currentJacId || isSuperAdmin),
   });
 
   // Consultar pedidos y encargos comunitarios de la JAC activa
@@ -91,7 +91,7 @@ export default function MarketplaceAdminPage() {
   } = useQuery<any[]>({
     queryKey: ["admin-marketplace-orders", currentJacId],
     queryFn: () => apiClient.get("/marketplace/admin/orders"),
-    enabled: Boolean(currentJacId),
+    enabled: Boolean(currentJacId || isSuperAdmin),
   });
 
   // Mutación para moderar estado del producto (Aprobar o Suspender)

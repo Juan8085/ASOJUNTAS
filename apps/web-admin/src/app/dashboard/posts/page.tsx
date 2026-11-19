@@ -36,7 +36,7 @@ interface PostsResponse {
 
 export default function PostsPage() {
   const queryClient = useQueryClient();
-  const { currentJacId } = useAuthStore();
+  const { currentJacId, isSuperAdmin } = useAuthStore();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
 
@@ -51,7 +51,7 @@ export default function PostsPage() {
   const { data: postsData, isLoading } = useQuery<PostsResponse>({
     queryKey: ["posts-feed", currentJacId],
     queryFn: () => apiClient("/posts", { params: { jacId: currentJacId || undefined } }),
-    enabled: Boolean(currentJacId),
+    enabled: Boolean(currentJacId || isSuperAdmin),
   });
 
   const createMutation = useMutation({

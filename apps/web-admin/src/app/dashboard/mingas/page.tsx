@@ -49,7 +49,7 @@ interface MingaAttendee {
 
 export default function MingasPage() {
   const queryClient = useQueryClient();
-  const { currentJacId } = useAuthStore();
+  const { currentJacId, isSuperAdmin } = useAuthStore();
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [selectedMingaForAttendance, setSelectedMingaForAttendance] = useState<MingaItem | null>(null);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
@@ -69,7 +69,7 @@ export default function MingasPage() {
   const { data: mingas, isLoading } = useQuery<MingaItem[]>({
     queryKey: ["mingas", currentJacId],
     queryFn: () => apiClient("/mingas"),
-    enabled: Boolean(currentJacId),
+    enabled: Boolean(currentJacId || isSuperAdmin),
   });
 
   const { data: attendeesList, refetch: refetchAttendees } = useQuery<MingaAttendee[]>({

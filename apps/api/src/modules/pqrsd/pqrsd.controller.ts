@@ -70,7 +70,7 @@ export class PqrsdController {
   @ApiQuery({ name: "status", required: false, enum: PqrsdStatus })
   @ApiQuery({ name: "type", required: false, enum: PqrsdType })
   async getTickets(
-    @CurrentTenant() jacId: string,
+    @CurrentTenant() jacId?: string,
     @Query("status") status?: PqrsdStatus,
     @Query("type") type?: PqrsdType
   ) {

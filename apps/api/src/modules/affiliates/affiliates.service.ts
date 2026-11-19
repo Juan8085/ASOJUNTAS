@@ -40,8 +40,8 @@ export class AffiliatesService {
    * Consulta paginada del Libro Digital de Afiliados de la JAC (Ley 2166/2021)
    */
   async getBook(
-    jacId: string,
-    query: {
+    jacId?: string | null,
+    query?: {
       page?: number;
       limit?: number;
       search?: string;
@@ -49,17 +49,17 @@ export class AffiliatesService {
       role?: UserRole;
     }
   ) {
-    const page = Math.max(1, query.page ? Number(query.page) : 1);
-    const limit = Math.max(1, Math.min(100, query.limit ? Number(query.limit) : 20));
+    const page = Math.max(1, query?.page ? Number(query.page) : 1);
+    const limit = Math.max(1, Math.min(100, query?.limit ? Number(query.limit) : 20));
     const skip = (page - 1) * limit;
 
     const whereClause: Record<string, unknown> = {
-      jacId,
-      ...(query.status && { status: query.status }),
-      ...(query.role && { role: query.role }),
+      ...(jacId && jacId !== "all" ? { jacId } : {}),
+      ...(query?.status && { status: query.status }),
+      ...(query?.role && { role: query.role }),
     };
 
-    if (query.search) {
+    if (query?.search) {
       whereClause.OR = [
         { user: { identificationNumber: { contains: query.search, mode: "insensitive" } } },
         { user: { firstName: { contains: query.search, mode: "insensitive" } } },
@@ -74,6 +74,13 @@ export class AffiliatesService {
       this.prisma.jacMembership.findMany({
         where: whereClause,
         include: {
+          jac: {
+            select: {
+              id: true,
+              name: true,
+              veredaOrBarrio: true,
+            },
+          },
           user: {
             select: {
               id: true,
@@ -98,6 +105,7 @@ export class AffiliatesService {
       data: items.map((item) => ({
         membershipId: item.id,
         user: item.user,
+        jac: item.jac,
         bookNumber: item.bookNumber,
         folioNumber: item.folioNumber,
         affiliationDate: item.affiliationDate,
@@ -126,9 +134,9 @@ export class AffiliatesService {
   /**
    * Detalle individual de una entrada del libro
    */
-  async getEntryById(jacId: string, membershipId: string) {
+  async getEntryById(jacId: string | null | undefined, membershipId: string) {
     const entry = await this.prisma.jacMembership.findFirst({
-      where: { id: membershipId, jacId },
+      where: { id: membershipId, ...(jacId && jacId !== "all" ? { jacId } : {}) },
       include: {
         user: true,
         jac: {
@@ -152,9 +160,9 @@ export class AffiliatesService {
   /**
    * Estado de cuenta integral del afiliado: cuotas históricas, adelantos y recibos
    */
-  async getAffiliateStatement(jacId: string, membershipId: string) {
+  async getAffiliateStatement(jacId: string | null | undefined, membershipId: string) {
     const membership = await this.prisma.jacMembership.findFirst({
-      where: { id: membershipId, jacId },
+      where: { id: membershipId, ...(jacId && jacId !== "all" ? { jacId } : {}) },
       include: {
         user: true,
         jac: {
@@ -172,12 +180,13 @@ export class AffiliatesService {
       throw new NotFoundException("Afiliado no encontrado en esta JAC");
     }
 
+    const effectiveJacId = membership.jacId;
     const now = new Date();
     const currentPeriodStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
 
     // 1. Obtener todos los pagos/recibos registrados
     const payments = await this.prisma.paymentTransaction.findMany({
-      where: { jacId, userId: membership.userId, status: PaymentStatus.APPROVED },
+      where: { jacId: effectiveJacId, userId: membership.userId, status: PaymentStatus.APPROVED },
       include: {
         treasuryTransactions: {
           include: {
@@ -193,7 +202,7 @@ export class AffiliatesService {
 
     // 2. Obtener todas las obligaciones de cuotas del afiliado (pasadas, actuales y adelantadas)
     let obligations = await this.prisma.userFeeObligation.findMany({
-      where: { jacId, userId: membership.userId },
+      where: { jacId: effectiveJacId, userId: membership.userId },
       include: {
         feeConfig: {
           select: { name: true, type: true, amount: true },
@@ -207,7 +216,7 @@ export class AffiliatesService {
     // Auto-reconciliación: si el afiliado tiene pagos aprobados que exceden las obligaciones generadas
     if (totalApprovedPayments > totalCovered) {
       const feeConfig = await this.prisma.feeConfiguration.findFirst({
-        where: { jacId, isActive: true },
+        where: { jacId: effectiveJacId, isActive: true },
         orderBy: { createdAt: "asc" },
       });
       if (feeConfig) {
@@ -233,7 +242,7 @@ export class AffiliatesService {
 
           const newObl = await this.prisma.userFeeObligation.create({
             data: {
-              jacId,
+              jacId: effectiveJacId,
               userId: membership.userId,
               feeConfigId: feeConfig.id,
               period: periodStr,
@@ -520,9 +529,9 @@ export class AffiliatesService {
   /**
    * Restablecer PIN de acceso móvil para un afiliado (Directivos JAC)
    */
-  async resetAffiliatePin(jacId: string, membershipId: string, newPin?: string) {
+  async resetAffiliatePin(jacId: string | null | undefined, membershipId: string, newPin?: string) {
     const membership = await this.prisma.jacMembership.findFirst({
-      where: { id: membershipId, jacId },
+      where: { id: membershipId, ...(jacId && jacId !== "all" ? { jacId } : {}) },
       include: {
         user: {
           include: {

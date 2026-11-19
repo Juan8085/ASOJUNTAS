@@ -197,9 +197,9 @@ export class MarketplaceService {
   /**
    * Listar todos los productos del mercado para administración y moderación directiva
    */
-  async getAdminProducts(jacId: string, query?: { search?: string; status?: string }) {
+  async getAdminProducts(jacId?: string | null, query?: { search?: string; status?: string }) {
     const whereClause: Record<string, unknown> = {
-      jacId,
+      ...(jacId && jacId !== "all" ? { jacId } : {}),
       ...(query?.status === "active" && { isAvailable: true }),
       ...(query?.status === "suspended" && { isAvailable: false }),
     };
@@ -515,10 +515,10 @@ export class MarketplaceService {
   /**
    * Listar todos los pedidos de la JAC para los directivos
    */
-  async getAdminOrders(jacId: string, query?: { search?: string; status?: MarketOrderStatus }) {
+  async getAdminOrders(jacId?: string | null, query?: { search?: string; status?: MarketOrderStatus }) {
     return this.prisma.marketOrder.findMany({
       where: {
-        jacId,
+        ...(jacId && jacId !== "all" ? { jacId } : {}),
         ...(query?.status && { status: query.status }),
         ...(query?.search && {
           OR: [
